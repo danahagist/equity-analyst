@@ -43,6 +43,53 @@ class RunResult:
     output_path: Path | None = None
 
 
+@dataclass
+class MarketSnapshot:
+    """Everything gathered before any analyst runs: data + forecast."""
+
+    context: AnalystContext
+    forecast: ForecastResult
+
+    @property
+    def as_of(self) -> str:
+        return self.forecast.as_of_date
+
+
+def gather_market_data(
+    ticker: str,
+    *,
+    data_source: MarketDataSource,
+    engine: ForecastEngine | None = None,
+    period: str = "5y",
+    progress: Callable[[str], None] | None = None,
+) -> MarketSnapshot:
+    """Fetch prices/fundamentals/analyst data and run the forecast engine.
+
+    Shared by the full-auto pipeline and the Claude-Code-native ``prep`` stage.
+    """
+    ticker = ticker.upper()
+    engine = engine or ForecastEngine()
+    say = progress or (lambda _msg: None)
+
+    say(f"fetching market data for {ticker}…")
+    prices = data_source.get_prices(ticker, period=period)
+    last_price = float(prices["close"].iloc[-1]) if not prices.empty else None
+    fundamentals = _safe_dict(data_source.get_fundamentals, ticker)
+    analyst_info = _safe_dict(data_source.get_analyst_info, ticker)
+
+    say("running forecast backtests (this is the slow, honest part)…")
+    forecast = engine.forecast(ticker, prices)
+
+    context = AnalystContext(
+        ticker=ticker,
+        last_price=last_price,
+        fundamentals=fundamentals,
+        analyst_info=analyst_info,
+        forecast=forecast,
+    )
+    return MarketSnapshot(context=context, forecast=forecast)
+
+
 def run_committee(
     ticker: str,
     *,
@@ -56,26 +103,14 @@ def run_committee(
     progress: Callable[[str], None] | None = None,
 ) -> RunResult:
     ticker = ticker.upper()
-    engine = engine or ForecastEngine()
     say = progress or (lambda _msg: None)
 
-    say(f"fetching market data for {ticker}…")
-    prices = data_source.get_prices(ticker, period=period)
-    last_price = float(prices["close"].iloc[-1]) if not prices.empty else None
-    fundamentals = _safe_dict(data_source.get_fundamentals, ticker)
-    analyst_info = _safe_dict(data_source.get_analyst_info, ticker)
-
-    say("running forecast backtests (this is the slow, honest part)…")
-    forecast = engine.forecast(ticker, prices)
-    as_of = forecast.as_of_date
-
-    context = AnalystContext(
-        ticker=ticker,
-        last_price=last_price,
-        fundamentals=fundamentals,
-        analyst_info=analyst_info,
-        forecast=forecast,
+    snapshot = gather_market_data(
+        ticker, data_source=data_source, engine=engine, period=period, progress=progress
     )
+    context, forecast = snapshot.context, snapshot.forecast
+    as_of = snapshot.as_of
+    last_price = context.last_price
 
     analysts = [
         TechnicalAnalyst(),

@@ -66,21 +66,25 @@ tools — don't collapse this back into one structured call.
 
 ## Architecture decisions (settled)
 
-- **LLM provider:** Anthropic Claude, behind a thin client module so a swap is a
-  small, localized change. Key: `ANTHROPIC_API_KEY` (in `.env`, gitignored).
-- **Model per analyst (config-driven, one-line to change):** match model tier to
-  cognitive load. Judgment-heavy seats get Opus; search-heavy seats get Sonnet.
-  Cost is not the constraint (~$0.35–0.60/ticker in tokens); analysis quality is.
+- **LLM execution — two modes, keyless is the default:**
+  1. **Claude-Code-native (default, no API key).** Claude Code in VS Code *is*
+     the committee's LLM. Staged CLI: `prep` (data + forecast + seat briefings)
+     → seats run in-chat **as independent subagents** (separate context windows
+     preserve verdict independence) → `consensus` (deterministic summary + PM
+     briefing) → PM in-chat → `finalize` (report + persistence). Orchestrated by
+     the `run-analysis` skill; session state in `data/runs/` (gitignored). The
+     session's model does every seat — model choice rides on the Claude Code
+     session, and usage bills to the user's Claude subscription.
+  2. **Full-auto (`analyze`, optional).** The tool calls the Anthropic API
+     itself via the thin client module. Needs `ANTHROPIC_API_KEY` in `.env`
+     (~$0.35–0.60/ticker). Model per analyst is config-driven in
+     `llm/config.py`: Portfolio Manager + Fundamental on `claude-opus-4-8`
+     (effort high); News/Social + Research on `claude-sonnet-5` (effort medium,
+     + web search). Adaptive thinking on; structured outputs for verdicts.
 
-  | Role | Model | Effort |
-  |---|---|---|
-  | Portfolio Manager | `claude-opus-4-8` | high |
-  | Fundamental | `claude-opus-4-8` | high |
-  | News/Social | `claude-sonnet-5` | medium (+ web search) |
-  | Research | `claude-sonnet-5` | medium (+ web search) |
-
-  Adaptive thinking on; structured outputs (JSON schema) for every analyst's
-  verdict so the consensus function gets clean data, not prose to parse.
+  Both modes share the same prompt library, verdict schema, consensus function,
+  report builder, and SQLite record — a run is a run regardless of who did the
+  LLM work. Don't let the modes drift apart.
 - **Market/financial data:** `yfinance` (free, no key), **isolated behind one
   data-access module**. It's unofficial and can break; the isolation makes moving
   to a keyed API (Alpha Vantage / FMP free tier) a one-file change later.
@@ -151,6 +155,8 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
   AutoARIMA, calibration-gated selection), two-phase analysts, pause_turn
   handling, PM fallback, holding-period guidance, progress narration.
 - [x] Project skills (`.claude/skills/`) + `docs/GETTING_STARTED.md`.
+- [x] Claude-Code-native keyless mode (prep/consensus/finalize + session module)
+  — the default; API-key `analyze` mode kept as the optional full-auto path.
 
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output

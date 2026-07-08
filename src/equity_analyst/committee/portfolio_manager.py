@@ -33,7 +33,7 @@ PM_SCHEMA: dict = {
     "additionalProperties": False,
 }
 
-_SYSTEM = """You are the portfolio manager chairing an investment committee. \
+PM_SYSTEM = """You are the portfolio manager chairing an investment committee. \
 Role-specialized analysts (Technical, Fundamental, News/Social, Research) have each \
 independently rated a stock on a −2…+2 scale (−2 Strong Sell … +2 Strong Buy). You \
 are given a mechanical agreement summary and each analyst's full writeup.
@@ -81,17 +81,22 @@ class PortfolioManager:
     ) -> PMSynthesis:
         prompt = build_pm_prompt(ticker, verdicts, consensus)
         response = self.llm.analyze(
-            role=self.role, system=_SYSTEM, prompt=prompt, schema=PM_SCHEMA
+            role=self.role, system=PM_SYSTEM, prompt=prompt, schema=PM_SCHEMA
         )
-        parsed = response.parsed or {}
-        return PMSynthesis(
-            rating=int(parsed["rating"]),
-            conviction=str(parsed["conviction"]),
-            horizon=str(parsed["horizon"]),
-            synthesis=str(parsed["synthesis"]),
-            key_risks=[str(r) for r in parsed.get("key_risks", [])],
-            horizon_fit=[str(h) for h in parsed.get("horizon_fit", [])],
-        )
+        return pm_from_parsed(response.parsed or {})
+
+
+def pm_from_parsed(parsed: dict) -> PMSynthesis:
+    """Build a :class:`PMSynthesis` from parsed structured output (raises KeyError
+    on missing required fields — callers treat that as a failed synthesis)."""
+    return PMSynthesis(
+        rating=int(parsed["rating"]),
+        conviction=str(parsed["conviction"]),
+        horizon=str(parsed["horizon"]),
+        synthesis=str(parsed["synthesis"]),
+        key_risks=[str(r) for r in parsed.get("key_risks", [])],
+        horizon_fit=[str(h) for h in parsed.get("horizon_fit", [])],
+    )
 
 
 def build_pm_prompt(

@@ -12,16 +12,21 @@ recommendation, and a portfolio manager synthesizes them into a final call:
 | Seat | Looks at | Engine |
 |---|---|---|
 | Technical | momentum, probabilistic price forecast (1d/1w/1m/1y) | Python (statistical + ML models, backtested) |
-| Fundamental | business model, financials, valuation, competition | Claude Opus over real fundamentals |
-| News/Social | events, sentiment, upcoming catalysts | Claude Sonnet + live web search |
-| Research | sell-side ratings, price targets, third-party research | Claude Sonnet + consensus data + web search |
-| Portfolio Manager | the big picture, risk, the final call | Claude Opus over everything above |
+| Fundamental | business model, financials, valuation, competition | Claude, over real fundamentals |
+| News/Social | events, sentiment, upcoming catalysts | Claude + live web search |
+| Research | sell-side ratings, price targets, third-party research | Claude + consensus data + web search |
+| Portfolio Manager | the big picture, risk, the final call | Claude, over everything above |
 
 It is **research assistance, not financial advice**, and it is honest by
 design: the forecaster is benchmarked against a naive baseline and *tells you
 when it has no edge*. Expect to see "no model beat naive drift" often — that is
-the tool working, not failing. Anyone selling you confident short-term price
-predictions is selling noise.
+the tool working, not failing.
+
+**No API key required.** In the default mode, Claude Code (the VS Code
+extension you already use) performs the Claude seats in-chat on your Claude
+subscription. Python does everything deterministic: data, forecasting,
+consensus math, the report, and storage. (An optional full-auto mode with an
+API key exists — see the end.)
 
 ## Install
 
@@ -29,32 +34,39 @@ predictions is selling noise.
 git clone <your-repo-url> && cd equity-analyst
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[forecast,dev]"
-
-cp .env.example .env       # then put your ANTHROPIC_API_KEY in .env
 pytest -q                  # optional: verify the install (all tests are offline)
 ```
 
-Requirements: Python 3.11+, an Anthropic API key. Market data is free via
-Yahoo (no key). A full run costs roughly **$0.35–0.60** in model tokens plus
-web-search fees — call it under a dollar per ticker.
+Requirements: Python 3.11+, VS Code with the Claude Code extension (signed in
+to your Claude account). Market data is free via Yahoo (no key).
 
 ## First run
 
-```bash
-equity-analyst AAPL
-```
+Open the repo in VS Code, start Claude Code, and say:
 
-What happens (progress narrates on stderr, ~2–5 minutes):
+> Run the committee on AAPL
 
-1. Pulls 5 years of prices + fundamentals + analyst consensus data.
-2. Backtests five forecasting models against a random-walk baseline across
-   16 rolling windows, per horizon (the slow, honest part).
-3. Each analyst researches and writes its analysis independently, then its
-   verdict is extracted in structured form.
-4. A deterministic function computes the agreement picture; the PM reads
-   everything and writes the synthesis.
-5. The report prints to stdout and is saved to `outputs/AAPL-<date>.md`; the
-   run and its forecasts are recorded in `data/equity_analyst.db`.
+That's it. The `run-analysis` skill (checked into the repo) tells Claude Code
+exactly what to do:
+
+1. `equity-analyst prep AAPL` — Python pulls 5 years of prices + fundamentals
+   + analyst consensus, backtests five forecasting models against a
+   random-walk baseline, records the Technical analyst's verdict, and prints a
+   *briefing packet* for the remaining seats.
+2. Claude Code spawns the **Fundamental, News/Social, and Research analysts as
+   independent subagents** (separate context windows — so their agreement
+   still means something). The search seats use live web search. Each returns
+   a verdict + full writeup, saved to a session file.
+3. `equity-analyst consensus AAPL` — Python computes the deterministic
+   agreement summary and prints the Portfolio Manager briefing.
+4. Claude Code performs the PM role — final call, key risks, holding-period
+   guidance — and saves it.
+5. `equity-analyst finalize AAPL` — Python validates everything, renders the
+   report to `outputs/AAPL-<date>.md`, and records the run + forecasts in
+   SQLite (`data/equity_analyst.db`) so the tool's track record accumulates.
+
+Expect a few minutes end to end. Cost: your Claude subscription usage — no
+separate API bill.
 
 ## How to read the report
 
@@ -91,38 +103,56 @@ as decoration around the interval.
 - **Re-run on a cadence** (weekly, or after earnings/major news), not
   continuously. Verdicts move with information, not with re-rolls.
 - **Track the tool's record.** Every run stores forecast-vs-actual data in
-  SQLite. Periodically audit whether the forecaster's intervals actually
-  contain reality ~80% of the time (in a Claude Code session, the
-  `forecast-skill-check` skill does this). If the tool has no skill at a
-  horizon, believe it — and weight the qualitative seats accordingly.
+  SQLite. Periodically ask Claude Code to *"check whether the forecaster has
+  skill yet"* (the `forecast-skill-check` skill) — it audits whether the 80%
+  intervals actually contain reality ~80% of the time. If the tool has no
+  skill at a horizon, believe it — and weight the qualitative seats
+  accordingly.
 - **Don't cherry-pick.** If you run 20 tickers and act only on the most
   bullish report, you've reinvented selection bias. Decide your universe
   first.
 - **Position sizing is yours.** The committee rates direction and conviction;
   it does not know your portfolio, tax situation, or risk budget.
-- **When an analyst errored** (it happens — web search flakes), the report
-  says so at the top. A 3-of-4 committee is still useful; a silent gap
-  wouldn't be.
+- **When a seat errored** (web search flakes happen), the report says so at
+  the top. A 3-of-4 committee is still useful; a silent gap wouldn't be.
+- **One honesty caveat of the in-chat mode:** seat independence relies on
+  subagents having separate contexts. If Claude Code ever runs the seats
+  without subagents, it will note that in the summary — treat that run's
+  "agreement" a bit more skeptically.
 
-## Working on the tool with Claude Code
+## Talking to the tool in Claude Code
 
-The repo carries skills that Claude Code picks up automatically:
+The repo ships skills, so plain requests work:
 
-- `run-analysis` — run or demo the tool correctly (including offline).
-- `forecast-skill-check` — audit forecast-vs-actual calibration from SQLite.
-- `add-analyst` — the recipe for adding a committee seat.
+- *"Run the committee on NVDA"* → the full staged flow above.
+- *"Check whether the forecaster has skill yet"* → forecast-vs-actual audit.
+- *"Add a macro analyst seat"* → guided by the `add-analyst` recipe.
+- *"Compare the last AAPL and MSFT reports"* → they're markdown in `outputs/`
+  and rows in SQLite; Claude Code can read both.
 
 `CLAUDE.md` is the working agreement — architecture decisions, honesty
 guardrails, and how decisions get made. Read it before changing anything
 structural.
 
+## Optional: full-auto mode (API key)
+
+If you later want unattended runs (cron a weekly universe sweep, CI, etc.),
+put an `ANTHROPIC_API_KEY` from console.anthropic.com in `.env` and run:
+
+```bash
+equity-analyst analyze AAPL        # one command, ~$0.35–0.60 per ticker
+```
+
+Same prompts, same report, same storage — the tool makes the API calls itself
+(Opus for judgment seats, Sonnet for search seats, per `llm/config.py`).
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| `error: ANTHROPIC_API_KEY is not set` | Copy `.env.example` → `.env`, add your key. |
 | `market data unavailable` | Yahoo hiccup or `yfinance` breakage (it's unofficial). Retry; if persistent, check for a `yfinance` update. Corporate networks/sandboxes may block Yahoo outright. |
-| `LLM call failed` | Check the key is valid and has credit; the SDK already retried rate limits before this surfaced. |
-| Report shows "Portfolio Manager synthesis unavailable" | The PM call failed; you got the mechanical consensus, clearly labeled low-conviction. Re-run for a full synthesis. |
-| Run feels slow | ~30–60s is backtesting, the rest is LLM calls (web search seats are the long pole). `--period 2y` shortens backtests at the cost of fewer windows. |
-| Forecast says "too few backtest windows" | Short price history (recent IPO, or short `--period`). The tool refuses to claim skill it can't demonstrate — pull more history if it exists. |
+| `no packet for TICKER` on consensus/finalize | Run `equity-analyst prep TICKER` first (stages share state via `data/runs/`). |
+| Report shows "Portfolio Manager synthesis unavailable" | The PM step never landed in the session file; you got the mechanical consensus, clearly labeled low-conviction. Re-run stage 3–5. |
+| `prep` feels slow | ~30–60s is backtesting five models across 16 windows. `--period 2y` shortens it at the cost of fewer windows. |
+| Forecast says "too few backtest windows" | Short price history (recent IPO, or short `--period`). The tool refuses to claim skill it can't demonstrate. |
+| `analyze` says it needs an API key | That's full-auto mode only — use the keyless flow above, or add a key from console.anthropic.com. |

@@ -52,7 +52,9 @@ class LLMAnalyst:
     role: str  # maps to a model via llm config
     name: str
 
-    def __init__(self, llm: LLMClient) -> None:
+    def __init__(self, llm: LLMClient | None) -> None:
+        # llm may be None when only build_prompt is needed (Claude-Code-native
+        # sessions extract the briefings without making API calls).
         self.llm = llm
 
     def build_prompt(self, context: AnalystContext) -> tuple[str, str]:

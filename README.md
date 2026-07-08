@@ -34,7 +34,7 @@ any override) plus **holding-period guidance** for ~1-week, ~1-month, and
 ## Requirements
 
 - Python 3.11+
-- An Anthropic API key (`ANTHROPIC_API_KEY`) for the LLM analysts
+- VS Code with the Claude Code extension (signed in) — **no API key needed**
 - Market data via `yfinance` (free, no key)
 
 **New here? Read [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** — install,
@@ -48,23 +48,38 @@ source .venv/bin/activate            # Windows: .venv\Scripts\activate
 
 # Core + the forecasting engine + dev tools
 pip install -e ".[forecast,dev]"
-
-cp .env.example .env                 # then add your ANTHROPIC_API_KEY
 ```
 
-## Usage
+## Usage (default: Claude Code runs the committee — no API key)
+
+Open the repo in VS Code, start Claude Code, and say **"run the committee on
+AAPL"**. The bundled `run-analysis` skill drives the staged flow:
 
 ```bash
-equity-analyst AAPL                  # full committee run → outputs/AAPL-<date>.md + stdout
-equity-analyst NVDA --period 10y     # more price history for the forecast
-equity-analyst TSLA --no-save        # stdout only, don't write the report file
-equity-analyst MSFT --no-db          # don't persist the run to SQLite
+equity-analyst prep AAPL        # Python: data + forecast + seat briefings
+#   → Claude Code runs Fundamental / News/Social / Research as independent
+#     subagents (search seats use live web search)
+equity-analyst consensus AAPL   # Python: deterministic agreement + PM briefing
+#   → Claude Code performs the Portfolio Manager synthesis
+equity-analyst finalize AAPL    # Python: validate, render, persist
 ```
 
-Each run writes `outputs/<TICKER>-<YYYY-MM-DD>.md` and prints to stdout. SQLite
-(`data/equity_analyst.db`) is the system of record — it keeps every run's
-recommendation plus the per-horizon forecast, so forecast-vs-actual skill can be
-checked over time. `data/` and `outputs/` are gitignored.
+Each run writes `outputs/<TICKER>-<YYYY-MM-DD>.md` and records the run +
+per-horizon forecasts in SQLite (`data/equity_analyst.db`) — the system of
+record, so forecast-vs-actual skill can be audited over time. `data/` and
+`outputs/` are gitignored.
+
+### Optional: full-auto mode (API key)
+
+For unattended runs (cron a weekly sweep), add `ANTHROPIC_API_KEY` to `.env`
+(see `.env.example`) and run everything in one command:
+
+```bash
+equity-analyst analyze AAPL          # ~$0.35–0.60/ticker via the Anthropic API
+equity-analyst analyze NVDA --period 10y
+```
+
+Same prompts, same report, same storage — the tool makes the API calls itself.
 
 ## Development
 

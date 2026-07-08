@@ -1,4 +1,14 @@
-"""Command-line entry point for equity-analyst."""
+"""Command-line entry point for equity-analyst.
+
+Two ways to run a committee:
+
+- **Claude-Code-native (default, no API key):** staged — ``prep`` gathers data
+  and prints seat briefings, Claude Code performs the LLM seats in-chat,
+  ``consensus`` prints the deterministic summary + PM briefing, ``finalize``
+  renders and persists the report. See the `run-analysis` skill.
+- **Full-auto (`analyze`, needs ANTHROPIC_API_KEY):** the tool makes the LLM
+  calls itself. Same prompts, same report.
+"""
 
 from __future__ import annotations
 
@@ -7,31 +17,70 @@ import sys
 
 from equity_analyst import __version__
 
+_COMMANDS = ("analyze", "prep", "consensus", "finalize")
+
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # Backward compat: `equity-analyst AAPL` == `equity-analyst analyze AAPL`.
+    if argv and argv[0] not in _COMMANDS and not argv[0].startswith("-"):
+        argv = ["analyze", *argv]
+
     parser = argparse.ArgumentParser(
         prog="equity-analyst",
         description="Investment-committee equity research for a stock ticker.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("ticker", nargs="?", help="Stock ticker, e.g. AAPL")
-    parser.add_argument("--period", default="5y", help="Price history to pull (default: 5y)")
-    parser.add_argument(
+    sub = parser.add_subparsers(dest="command")
+
+    p_analyze = sub.add_parser(
+        "analyze", help="Full-auto committee run (requires ANTHROPIC_API_KEY)"
+    )
+    p_prep = sub.add_parser(
+        "prep", help="Stage 1 (keyless): fetch data, forecast, print seat briefings"
+    )
+    for p in (p_analyze, p_prep):
+        p.add_argument("ticker", help="Stock ticker, e.g. AAPL")
+        p.add_argument("--period", default="5y", help="Price history to pull (default: 5y)")
+        p.add_argument("--no-db", action="store_true", help="Do not persist to SQLite")
+        p.add_argument("--quiet", action="store_true", help="Suppress progress messages")
+    p_analyze.add_argument(
         "--no-save", action="store_true", help="Do not write the markdown report to outputs/"
     )
-    parser.add_argument("--no-db", action="store_true", help="Do not persist the run to SQLite")
-    parser.add_argument("--quiet", action="store_true", help="Suppress progress messages")
-    args = parser.parse_args(argv)
 
-    if not args.ticker:
+    p_consensus = sub.add_parser(
+        "consensus", help="Stage 3 (keyless): mechanical consensus + PM briefing"
+    )
+    p_finalize = sub.add_parser(
+        "finalize", help="Stage 5 (keyless): validate session, render + persist report"
+    )
+    for p in (p_consensus, p_finalize):
+        p.add_argument("ticker", help="Stock ticker of the prepared session")
+        p.add_argument("--as-of", help="Session date (defaults to the latest packet)")
+    p_finalize.add_argument(
+        "--no-save", action="store_true", help="Do not write the markdown report to outputs/"
+    )
+    p_finalize.add_argument("--no-db", action="store_true", help="Do not persist to SQLite")
+
+    args = parser.parse_args(argv)
+    if args.command is None:
         parser.print_help()
         return 0
+    return {
+        "analyze": _cmd_analyze,
+        "prep": _cmd_prep,
+        "consensus": _cmd_consensus,
+        "finalize": _cmd_finalize,
+    }[args.command](args)
 
-    return _run(args)
+
+def _progress(args: argparse.Namespace):
+    if getattr(args, "quiet", False):
+        return None
+    return lambda msg: print(f"  {msg}", file=sys.stderr)
 
 
-def _run(args: argparse.Namespace) -> int:
-    # Imports are local so `--version`/`--help` stay fast and dependency-light.
+def _cmd_analyze(args: argparse.Namespace) -> int:
     from equity_analyst.config import get_settings
     from equity_analyst.data.yahoo import DataUnavailable, YahooDataSource
     from equity_analyst.llm.anthropic_client import AnthropicClient
@@ -41,14 +90,16 @@ def _run(args: argparse.Namespace) -> int:
 
     settings = get_settings()
     if not settings.anthropic_api_key:
-        print("error: ANTHROPIC_API_KEY is not set (put it in .env). See .env.example.")
+        print(
+            "error: `analyze` (full-auto mode) needs ANTHROPIC_API_KEY in .env.\n"
+            "No key? Use the keyless flow instead: `equity-analyst prep TICKER` "
+            "and let Claude Code run the committee (see the run-analysis skill)."
+        )
         return 2
 
     settings.ensure_dirs()
     conn = None if args.no_db else connect(settings.db_path)
     output_dir = None if args.no_save else settings.outputs_dir
-    # Progress goes to stderr so stdout stays clean for piping the report.
-    progress = None if args.quiet else (lambda msg: print(f"  {msg}", file=sys.stderr))
 
     try:
         result = run_committee(
@@ -58,13 +109,85 @@ def _run(args: argparse.Namespace) -> int:
             period=args.period,
             output_dir=output_dir,
             conn=conn,
-            progress=progress,
+            progress=_progress(args),
         )
     except DataUnavailable as exc:
         print(f"error: market data unavailable — {exc}")
         return 1
     except LLMError as exc:
         print(f"error: LLM call failed — {exc}")
+        return 1
+    finally:
+        if conn is not None:
+            conn.close()
+
+    print(result.report_md)
+    if result.output_path is not None:
+        print(f"\n[saved to {result.output_path}]")
+    return 0
+
+
+def _cmd_prep(args: argparse.Namespace) -> int:
+    from equity_analyst.config import get_settings
+    from equity_analyst.data.yahoo import DataUnavailable, YahooDataSource
+    from equity_analyst.session import prep_packet
+    from equity_analyst.storage import connect
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = None if args.no_db else connect(settings.db_path)
+    try:
+        result = prep_packet(
+            args.ticker,
+            data_source=YahooDataSource(),
+            runs_dir=settings.runs_dir,
+            period=args.period,
+            conn=conn,
+            progress=_progress(args),
+        )
+    except DataUnavailable as exc:
+        print(f"error: market data unavailable — {exc}")
+        return 1
+    finally:
+        if conn is not None:
+            conn.close()
+
+    print(result.markdown)
+    print(f"\n[packet saved to {result.packet_path}]")
+    return 0
+
+
+def _cmd_consensus(args: argparse.Namespace) -> int:
+    from equity_analyst.config import get_settings
+    from equity_analyst.session import consensus_briefing, load_packet
+
+    settings = get_settings()
+    try:
+        packet = load_packet(settings.runs_dir, args.ticker, args.as_of)
+        print(consensus_briefing(packet))
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}")
+        return 1
+    return 0
+
+
+def _cmd_finalize(args: argparse.Namespace) -> int:
+    from equity_analyst.config import get_settings
+    from equity_analyst.session import finalize_run, load_packet
+    from equity_analyst.storage import connect
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    conn = None if args.no_db else connect(settings.db_path)
+    try:
+        packet = load_packet(settings.runs_dir, args.ticker, args.as_of)
+        result = finalize_run(
+            packet,
+            output_dir=None if args.no_save else settings.outputs_dir,
+            conn=conn,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"error: {exc}")
         return 1
     finally:
         if conn is not None:

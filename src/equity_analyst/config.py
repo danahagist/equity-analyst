@@ -48,9 +48,15 @@ class Settings:
     def db_path(self) -> Path:
         return self.data_dir / "equity_analyst.db"
 
+    @property
+    def runs_dir(self) -> Path:
+        """Scratch space for in-progress committee sessions (packets, verdicts)."""
+        return self.data_dir / "runs"
+
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.outputs_dir.mkdir(parents=True, exist_ok=True)
+        self.runs_dir.mkdir(parents=True, exist_ok=True)
 
 
 def get_settings(*, load_env: bool = True) -> Settings:
