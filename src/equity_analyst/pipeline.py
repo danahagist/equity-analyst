@@ -160,7 +160,7 @@ def run_committee(
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{ticker}-{as_of}.md"
-        output_path.write_text(report_md)
+        output_path.write_text(report_md, encoding="utf-8")
 
     if conn is not None:
         _persist(conn, ticker, as_of, snapshot, consensus, pm, report_md, now)

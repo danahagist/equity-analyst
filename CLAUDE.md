@@ -24,6 +24,20 @@ now live inside the relevant analysts rather than running as a flat list.
 - **Feature branches for real changes**, never straight to `main`.
 - **Intellectual honesty over impressive-looking output.** See guardrails below.
 
+## Permissions (autonomous operation)
+
+This tool is meant to run **autonomously** — don't stop to ask permission for
+routine work. `.claude/settings.json` allowlists all tools (shell, file edits,
+web search, subagents) so runs proceed without prompts. Only two categories
+still require explicit confirmation, and Claude should treat them as
+confirm-first in its own judgment too:
+
+1. **Updating the remote repo** — `git push`, merging PRs, changing remotes.
+2. **Deleting project files** — `rm`/`Remove-Item`, `git clean`,
+   `git reset --hard`, or anything else that destroys working-tree content.
+
+Keep `.claude/settings.json` in sync with this policy if it changes.
+
 ## The committee
 
 | Analyst | Job | Powered by |
