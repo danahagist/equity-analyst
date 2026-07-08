@@ -6,9 +6,24 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Dana", email = "dhagist@gmail.com" }]
-dependencies = []
+dependencies = [
+    "pandas>=2.0",
+    "yfinance>=0.2",
+]
 
 [project.optional-dependencies]
+# Forecasting engine (Technical analyst). Kept optional so the core package and
+# its tests install fast; CI/dev pulls it in explicitly.
+forecast = [
+    "statsforecast>=1.7",
+    "mlforecast>=0.13",
+    "utilsforecast>=0.2",
+    "lightgbm>=4.0",
+]
+# Deep-learning models, off by default (see CLAUDE.md — must beat baselines first).
+neural = [
+    "neuralforecast>=1.7",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
