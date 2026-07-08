@@ -106,7 +106,7 @@ def prep_packet(
         "analyst_info": context.analyst_info,
         "verdicts_path": str(verdicts_path),
     }
-    packet_path.write_text(json.dumps(packet, indent=2))
+    packet_path.write_text(json.dumps(packet, indent=2), encoding="utf-8")
 
     markdown = _packet_markdown(packet, technical)
     return PrepResult(
@@ -125,13 +125,13 @@ def load_packet(runs_dir: Path, ticker: str, as_of: str | None = None) -> dict:
         path = runs_dir / f"{ticker}-{as_of}-packet.json"
         if not path.exists():
             raise FileNotFoundError(f"no packet at {path} — run `equity-analyst prep {ticker}`")
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     candidates = sorted(runs_dir.glob(f"{ticker}-*-packet.json"))
     if not candidates:
         raise FileNotFoundError(
             f"no packet for {ticker} in {runs_dir} — run `equity-analyst prep {ticker}`"
         )
-    return json.loads(candidates[-1].read_text())
+    return json.loads(candidates[-1].read_text(encoding="utf-8"))
 
 
 def load_session_verdicts(
@@ -150,7 +150,7 @@ def load_session_verdicts(
     session: dict = {}
     if path.exists():
         try:
-            session = json.loads(path.read_text())
+            session = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ValueError(f"verdicts file {path} is not valid JSON: {exc}") from exc
 
@@ -265,7 +265,7 @@ def finalize_run(
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{ticker}-{as_of}.md"
-        output_path.write_text(report_md)
+        output_path.write_text(report_md, encoding="utf-8")
 
     if conn is not None:
         created_at = now or datetime.now(timezone.utc).isoformat()

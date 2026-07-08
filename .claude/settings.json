@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash",
+      "PowerShell",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "Agent",
+      "Skill",
+      "ToolSearch",
+      "TodoWrite",
+      "WebFetch",
+      "WebSearch",
+      "NotebookEdit"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "PowerShell(git push*)",
+      "Bash(gh pr merge*)",
+      "PowerShell(gh pr merge*)",
+      "Bash(git remote*)",
+      "PowerShell(git remote*)",
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "PowerShell(Remove-Item*)",
+      "PowerShell(rm *)",
+      "PowerShell(del *)",
+      "PowerShell(rd *)",
+      "PowerShell(rmdir *)",
+      "Bash(git reset --hard*)",
+      "PowerShell(git reset --hard*)",
+      "Bash(git clean*)",
+      "PowerShell(git clean*)",
+      "Bash(git checkout -- *)",
+      "PowerShell(git checkout -- *)"
+    ]
+  }
+}
