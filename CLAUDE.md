@@ -56,6 +56,19 @@ now live inside the relevant analysts rather than running as a flat list.
 
 - **LLM provider:** Anthropic Claude, behind a thin client module so a swap is a
   small, localized change. Key: `ANTHROPIC_API_KEY` (in `.env`, gitignored).
+- **Model per analyst (config-driven, one-line to change):** match model tier to
+  cognitive load. Judgment-heavy seats get Opus; search-heavy seats get Sonnet.
+  Cost is not the constraint (~$0.35–0.60/ticker in tokens); analysis quality is.
+
+  | Role | Model | Effort |
+  |---|---|---|
+  | Portfolio Manager | `claude-opus-4-8` | high |
+  | Fundamental | `claude-opus-4-8` | high |
+  | News/Social | `claude-sonnet-5` | medium (+ web search) |
+  | Research | `claude-sonnet-5` | medium (+ web search) |
+
+  Adaptive thinking on; structured outputs (JSON schema) for every analyst's
+  verdict so the consensus function gets clean data, not prose to parse.
 - **Market/financial data:** `yfinance` (free, no key), **isolated behind one
   data-access module**. It's unofficial and can break; the isolation makes moving
   to a keyed API (Alpha Vantage / FMP free tier) a one-file change later.

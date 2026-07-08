@@ -9,6 +9,7 @@ authors = [{ name = "Dana", email = "dhagist@gmail.com" }]
 dependencies = [
     "pandas>=2.0",
     "yfinance>=0.2",
+    "anthropic>=0.116",
 ]
 
 [project.optional-dependencies]
