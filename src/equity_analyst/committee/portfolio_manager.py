@@ -22,13 +22,19 @@ PM_SCHEMA: dict = {
         "horizon": {"type": "string"},
         "synthesis": {"type": "string"},
         "key_risks": {"type": "array", "items": {"type": "string"}},
+        "horizon_fit": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "One line per holding period (1w, 1m, 1y): stance for an "
+            "investor holding over that period, grounded in the committee's evidence.",
+        },
     },
-    "required": ["rating", "conviction", "horizon", "synthesis", "key_risks"],
+    "required": ["rating", "conviction", "horizon", "synthesis", "key_risks", "horizon_fit"],
     "additionalProperties": False,
 }
 
-_SYSTEM = """You are the portfolio manager chairing an investment committee. Five \
-role-specialized analysts (Technical, Fundamental, News/Social, Research) have each \
+_SYSTEM = """You are the portfolio manager chairing an investment committee. \
+Role-specialized analysts (Technical, Fundamental, News/Social, Research) have each \
 independently rated a stock on a −2…+2 scale (−2 Strong Sell … +2 Strong Buy). You \
 are given a mechanical agreement summary and each analyst's full writeup.
 
@@ -40,6 +46,10 @@ shallow majority.
 management/execution, and financial.
 - Reach a final rated verdict. You MAY override the mechanical blend, but if you do, \
 justify the divergence explicitly.
+- Give holding-period guidance: one line each for an investor holding ~1 week, \
+~1 month, and ~1 year. Be honest that short horizons are noise-dominated — the \
+Technical forecast's intervals and skill flags tell you how much signal exists; do \
+not manufacture a short-term view the evidence doesn't support.
 
 Keep the synthesis tight and decision-useful — lead with the call and why. This is \
 research analysis, not financial advice."""
@@ -52,6 +62,7 @@ class PMSynthesis:
     horizon: str
     synthesis: str
     key_risks: list[str] = field(default_factory=list)
+    horizon_fit: list[str] = field(default_factory=list)
 
     @property
     def rating_label(self) -> str:
@@ -79,6 +90,7 @@ class PortfolioManager:
             horizon=str(parsed["horizon"]),
             synthesis=str(parsed["synthesis"]),
             key_risks=[str(r) for r in parsed.get("key_risks", [])],
+            horizon_fit=[str(h) for h in parsed.get("horizon_fit", [])],
         )
 
 
@@ -101,9 +113,11 @@ def build_pm_prompt(
             f"\n[{v.analyst}] {v.rating_label} (rating {v.rating:+d}, "
             f"conviction {v.conviction}, horizon {v.horizon})"
         )
-        lines.append(f"Evidence:\n{v.evidence}")
+        lines.append(f"Key points:\n{v.evidence}")
+        if v.writeup:
+            lines.append(f"Full writeup:\n{v.writeup}")
     lines.append(
-        "\nSynthesize the committee into your final call and key risks for "
-        f"{ticker}, following your mandate."
+        "\nSynthesize the committee into your final call, key risks, and "
+        f"holding-period guidance for {ticker}, following your mandate."
     )
     return "\n".join(lines)

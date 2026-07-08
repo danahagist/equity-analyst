@@ -32,6 +32,27 @@ def test_search_seat_enables_web_search_and_sonnet() -> None:
     assert params["tools"] == [{"type": "web_search_20260209", "name": "web_search"}]
 
 
+def test_allow_tools_false_disables_web_search() -> None:
+    # Extraction passes must not trigger new searches, even on search seats.
+    sdk = FakeSDK()
+    client = AnthropicClient(client=sdk)
+    client.analyze(role=ROLE_NEWS_SOCIAL, system="s", prompt="p", allow_tools=False)
+    assert "tools" not in sdk.messages.last_params
+
+
+def test_pause_turn_resumes_and_accumulates_text() -> None:
+    # Server-side web search can pause a turn; the client must resume and keep
+    # the text from every segment.
+    sdk = FakeSDK(script=[("first part. ", "pause_turn"), ("second part.", "end_turn")])
+    client = AnthropicClient(client=sdk)
+    resp = client.analyze(role=ROLE_NEWS_SOCIAL, system="s", prompt="p")
+    assert resp.text == "first part. second part."
+    # The continuation request echoed the assistant content back.
+    assert len(sdk.messages.all_params) == 2
+    assert [m["role"] for m in sdk.messages.all_params[1]["messages"]] == ["user", "assistant"]
+    assert resp.usage == {"input_tokens": 20, "output_tokens": 40}  # summed across segments
+
+
 def test_judgment_seat_has_no_web_search() -> None:
     sdk = FakeSDK()
     client = AnthropicClient(client=sdk)

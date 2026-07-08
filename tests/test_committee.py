@@ -94,7 +94,7 @@ def test_technical_analyst_end_to_end() -> None:
 # --- LLM analysts ------------------------------------------------------------
 
 
-def test_llm_analysts_route_and_return_verdicts() -> None:
+def test_llm_analysts_are_two_phase_and_return_verdicts() -> None:
     llm = FakeLLMClient(verdicts={
         ROLE_FUNDAMENTAL: {"rating": 1, "conviction": "high", "horizon": "1y", "evidence": "moat"},
         ROLE_NEWS_SOCIAL: {"rating": 0, "conviction": "low", "horizon": "1mo", "evidence": "quiet"},
@@ -110,10 +110,18 @@ def test_llm_analysts_route_and_return_verdicts() -> None:
     ]:
         v = analyst.evaluate(ctx)
         assert v.rating == rating and v.analyst == analyst.name
-        call = llm.calls[-1]
-        assert call["role"] == role
-        assert call["schema"] is VERDICT_SCHEMA
-        assert "NVDA" in call["prompt"]
+        assert v.writeup == llm.narrative  # full analysis rides along on the verdict
+
+        research, extraction = llm.calls[-2], llm.calls[-1]
+        # Phase 1: free-form research (no schema, tools allowed) grounded on the ticker.
+        assert research["role"] == role
+        assert research["schema"] is None and research["allow_tools"]
+        assert "NVDA" in research["prompt"]
+        # Phase 2: tool-free extraction of the verdict from the writeup.
+        assert extraction["role"] == role
+        assert extraction["schema"] is VERDICT_SCHEMA
+        assert not extraction["allow_tools"]
+        assert llm.narrative in extraction["prompt"]
 
 
 def test_fundamental_prompt_grounds_on_factsheet() -> None:
@@ -122,5 +130,5 @@ def test_fundamental_prompt_grounds_on_factsheet() -> None:
     })
     ctx = AnalystContext(ticker="AAPL", last_price=200.0, fundamentals={"trailingPE": 28.5})
     FundamentalAnalyst(llm).evaluate(ctx)
-    prompt = llm.calls[-1]["prompt"]
-    assert "trailingPE: 28.5" in prompt and "$200.00" in prompt
+    research = llm.calls[-2]  # phase-1 research call carries the fact-sheet
+    assert "trailingPE: 28.5" in research["prompt"] and "$200.00" in research["prompt"]

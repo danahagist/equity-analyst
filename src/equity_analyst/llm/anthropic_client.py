@@ -16,6 +16,9 @@ from equity_analyst.llm.config import DEFAULT_ROLE_MODELS, ModelConfig
 # Web search tool with dynamic filtering (supported on Opus 4.8 / Sonnet 5).
 _WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}
 
+# Cap on pause_turn continuations before giving up on a turn.
+_MAX_CONTINUATIONS = 5
+
 
 class AnthropicClient:
     """:class:`~equity_analyst.llm.base.LLMClient` backed by the Anthropic SDK."""
@@ -41,7 +44,15 @@ class AnthropicClient:
             self._client = anthropic.Anthropic(api_key=self._api_key)
         return self._client
 
-    def build_params(self, cfg: ModelConfig, system: str, prompt: str, schema: dict | None) -> dict:
+    def build_params(
+        self,
+        cfg: ModelConfig,
+        system: str,
+        prompt: str,
+        schema: dict | None,
+        *,
+        allow_tools: bool = True,
+    ) -> dict:
         """Construct the Messages API request for one role. Pure, so it's unit-tested."""
         params: dict = {
             "model": cfg.model,
@@ -53,7 +64,7 @@ class AnthropicClient:
         }
         if schema is not None:
             params["output_config"]["format"] = {"type": "json_schema", "schema": schema}
-        if cfg.web_search:
+        if cfg.web_search and allow_tools:
             params["tools"] = [_WEB_SEARCH_TOOL]
         return params
 
@@ -64,20 +75,40 @@ class AnthropicClient:
         system: str,
         prompt: str,
         schema: dict | None = None,
+        allow_tools: bool = True,
     ) -> LLMResponse:
         if role not in self._role_models:
             raise LLMError(f"no model configured for role {role!r}")
         cfg = self._role_models[role]
-        params = self.build_params(cfg, system, prompt, schema)
-        try:
-            message = self._sdk().messages.create(**params)
-        except Exception as exc:  # noqa: BLE001 - normalize SDK/network errors
-            raise LLMError(f"completion failed for role {role!r}: {exc}") from exc
+        params = self.build_params(cfg, system, prompt, schema, allow_tools=allow_tools)
+
+        # Server-side web search can pause a long turn (stop_reason "pause_turn");
+        # resume by echoing the assistant content back until the turn completes.
+        # Text is accumulated across continuations so nothing is silently lost.
+        text_parts: list[str] = []
+        usage = {"input_tokens": 0, "output_tokens": 0}
+        message = None
+        for _ in range(_MAX_CONTINUATIONS):
+            try:
+                message = self._sdk().messages.create(**params)
+            except Exception as exc:  # noqa: BLE001 - normalize SDK/network errors
+                raise LLMError(f"completion failed for role {role!r}: {exc}") from exc
+            text_parts.append(_extract_text(message))
+            step_usage = _extract_usage(message)
+            usage = {k: usage[k] + step_usage.get(k, 0) for k in usage}
+            if getattr(message, "stop_reason", None) != "pause_turn":
+                break
+            params = dict(params)
+            params["messages"] = params["messages"] + [
+                {"role": "assistant", "content": message.content}
+            ]
+        else:
+            raise LLMError(f"turn did not complete after continuations for role {role!r}")
 
         if getattr(message, "stop_reason", None) == "refusal":
             raise LLMError(f"model refused the request for role {role!r}")
 
-        text = _extract_text(message)
+        text = "".join(text_parts).strip()
         parsed = None
         if schema is not None:
             try:
@@ -90,18 +121,19 @@ class AnthropicClient:
             model=getattr(message, "model", cfg.model),
             text=text,
             parsed=parsed,
-            usage=_extract_usage(message),
+            usage=usage,
         )
 
 
 def _extract_text(message: object) -> str:
-    """Concatenate the text blocks of an Anthropic message."""
+    """Concatenate the text blocks of an Anthropic message (unstripped — the
+    caller joins segments across pause_turn continuations before stripping)."""
     parts = [
         block.text
         for block in getattr(message, "content", [])
         if getattr(block, "type", None) == "text"
     ]
-    return "".join(parts).strip()
+    return "".join(parts)
 
 
 def _extract_usage(message: object) -> dict[str, int]:

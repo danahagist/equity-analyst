@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from equity_analyst import __version__
 
@@ -19,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
         "--no-save", action="store_true", help="Do not write the markdown report to outputs/"
     )
     parser.add_argument("--no-db", action="store_true", help="Do not persist the run to SQLite")
+    parser.add_argument("--quiet", action="store_true", help="Suppress progress messages")
     args = parser.parse_args(argv)
 
     if not args.ticker:
@@ -45,6 +47,8 @@ def _run(args: argparse.Namespace) -> int:
     settings.ensure_dirs()
     conn = None if args.no_db else connect(settings.db_path)
     output_dir = None if args.no_save else settings.outputs_dir
+    # Progress goes to stderr so stdout stays clean for piping the report.
+    progress = None if args.quiet else (lambda msg: print(f"  {msg}", file=sys.stderr))
 
     try:
         result = run_committee(
@@ -54,6 +58,7 @@ def _run(args: argparse.Namespace) -> int:
             period=args.period,
             output_dir=output_dir,
             conn=conn,
+            progress=progress,
         )
     except DataUnavailable as exc:
         print(f"error: market data unavailable — {exc}")

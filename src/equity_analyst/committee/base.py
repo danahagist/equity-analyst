@@ -33,8 +33,21 @@ class Analyst(Protocol):
         ...
 
 
+_EXTRACT_SYSTEM = """You extract the structured verdict that an equity analyst's \
+written analysis supports. Report only what the analysis itself concludes — do not \
+add claims, soften dissents, or second-guess the analyst. If the analysis states an \
+explicit rating, use it; otherwise infer the closest rating the text supports."""
+
+
 class LLMAnalyst:
-    """Base for analysts whose verdict comes from an LLM completion."""
+    """Base for analysts whose verdict comes from an LLM completion.
+
+    Evaluation is two-phase: (1) an unconstrained research/analysis completion
+    (with web search where the role has it) — forcing long-form analysis through
+    a JSON schema degrades reasoning quality and is fragile combined with search
+    tools; (2) a cheap, tool-free extraction pass that formalizes the verdict
+    the writeup supports. The full writeup rides along on the Verdict.
+    """
 
     role: str  # maps to a model via llm config
     name: str
@@ -48,10 +61,23 @@ class LLMAnalyst:
 
     def evaluate(self, context: AnalystContext) -> Verdict:
         system, prompt = self.build_prompt(context)
-        response = self.llm.analyze(
-            role=self.role, system=system, prompt=prompt, schema=VERDICT_SCHEMA
+        research = self.llm.analyze(role=self.role, system=system, prompt=prompt)
+        if not research.text.strip():
+            raise ValueError(f"{self.name}: analysis pass returned no text")
+
+        extract_prompt = (
+            f"Below is the {self.name} analyst's full written analysis of "
+            f"{context.ticker}. Extract the verdict it supports.\n\n"
+            f"<analysis>\n{research.text}\n</analysis>"
         )
-        return verdict_from_parsed(self.name, response.parsed)
+        response = self.llm.analyze(
+            role=self.role,
+            system=_EXTRACT_SYSTEM,
+            prompt=extract_prompt,
+            schema=VERDICT_SCHEMA,
+            allow_tools=False,
+        )
+        return verdict_from_parsed(self.name, response.parsed, writeup=research.text)
 
 
 def format_fundamentals(context: AnalystContext) -> str:

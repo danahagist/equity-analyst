@@ -33,10 +33,12 @@ def build_report(
     last_price: float | None = None,
     failures: list[tuple[str, str]] | None = None,
 ) -> str:
-    price = f" · last ${last_price:,.2f}" if last_price is not None else ""
     out: list[str] = [
         f"# {ticker} — Investment Committee ({as_of})",
-        f"{price.lstrip(' ·') or as_of}",
+    ]
+    if last_price is not None:
+        out.append(f"Last price: ${last_price:,.2f}")
+    out += [
         "",
         _DISCLAIMER,
         "",
@@ -64,6 +66,9 @@ def build_report(
         "",
         pm.synthesis.strip(),
     ]
+    if pm.horizon_fit:
+        out += ["", "**Holding-period guidance**"]
+        out += [f"- {line}" for line in pm.horizon_fit]
     if pm.key_risks:
         out += ["", "**Key risks**"]
         out += [f"- {risk}" for risk in pm.key_risks]
@@ -74,9 +79,11 @@ def build_report(
             f"### {v.analyst} — {v.rating_label} "
             f"(rating {_signed(v.rating)}, {v.conviction} conviction, horizon {v.horizon})",
             "",
-            v.evidence.strip(),
-            "",
         ]
+        if v.writeup:
+            out += [f"**Key points:** {v.evidence.strip()}", "", v.writeup.strip(), ""]
+        else:
+            out += [v.evidence.strip(), ""]
 
     if failures:
         out += ["## Analysts that could not be reached", ""]

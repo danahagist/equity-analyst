@@ -39,6 +39,7 @@ class NewsSocialAnalyst(LLMAnalyst):
         user = (
             f"Research the current news, sentiment, and upcoming catalysts for "
             f"{context.ticker}.{price} Search the web for recent developments, then "
-            f"deliver your structured verdict."
+            f"conclude with your explicit verdict: rating on the −2…+2 scale, "
+            f"conviction (low/medium/high), and the horizon it applies to."
         )
         return _SYSTEM, user

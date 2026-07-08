@@ -28,7 +28,8 @@ def _llm() -> FakeLLMClient:
         ROLE_NEWS_SOCIAL: {"rating": 1, "conviction": "medium", "horizon": "1mo", "evidence": "news"},
         ROLE_RESEARCH: {"rating": 2, "conviction": "medium", "horizon": "1y", "evidence": "targets"},
         ROLE_PORTFOLIO_MANAGER: {"rating": 1, "conviction": "high", "horizon": "6-12mo",
-                                 "synthesis": "Constructive.", "key_risks": ["macro"]},
+                                 "synthesis": "Constructive.", "key_risks": ["macro"],
+                                 "horizon_fit": ["1w: no edge", "1m: hold", "1y: buy"]},
     })
 
 
@@ -73,3 +74,31 @@ def test_run_survives_one_failing_analyst(tmp_path) -> None:
     assert "Research" in [name for name, _ in result.failures]
     assert len(result.verdicts) == 3  # run still completes
     assert "could not be reached" in result.report_md
+
+
+def test_pm_failure_falls_back_to_mechanical_consensus() -> None:
+    # PM returns no structured output -> synthesize raises -> mechanical fallback.
+    llm = _llm()
+    del llm.verdicts[ROLE_PORTFOLIO_MANAGER]
+    result = run_committee(
+        "TEST", data_source=FakeDataSource(days=500), engine=_FAST_ENGINE, llm=llm
+    )
+    assert "Portfolio Manager" in [name for name, _ in result.failures]
+    assert result.pm.conviction == "low"  # fallback never claims judgment
+    assert "mechanical consensus" in result.pm.synthesis
+    assert result.report_md  # report still renders end to end
+
+
+def test_progress_callback_narrates_stages() -> None:
+    messages: list[str] = []
+    run_committee(
+        "TEST",
+        data_source=FakeDataSource(days=500),
+        engine=_FAST_ENGINE,
+        llm=_llm(),
+        progress=messages.append,
+    )
+    joined = "\n".join(messages)
+    assert "fetching market data" in joined
+    assert "Fundamental analyst working" in joined
+    assert "Portfolio Manager synthesizing" in joined

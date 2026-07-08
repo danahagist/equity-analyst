@@ -37,7 +37,9 @@ class ResearchAnalyst(LLMAnalyst):
         )
         user = (
             f"Assess the third-party research and analyst consensus for "
-            f"{context.ticker}. Search the web for recent analyst actions, then deliver "
-            f"your structured verdict.\n\n{price}{format_analyst_info(context)}"
+            f"{context.ticker}. Search the web for recent analyst actions, then "
+            f"conclude with your explicit verdict: rating on the −2…+2 scale, "
+            f"conviction (low/medium/high), and the horizon it applies to."
+            f"\n\n{price}{format_analyst_info(context)}"
         )
         return _SYSTEM, user

@@ -33,7 +33,8 @@ class FundamentalAnalyst(LLMAnalyst):
 
     def build_prompt(self, context: AnalystContext) -> tuple[str, str]:
         user = (
-            f"Perform a fundamental analysis of {context.ticker} and deliver your "
-            f"structured verdict.\n\n{format_fundamentals(context)}"
+            f"Perform a fundamental analysis of {context.ticker}. Conclude with your "
+            f"explicit verdict: rating on the −2…+2 scale, conviction (low/medium/high), "
+            f"and the horizon it applies to.\n\n{format_fundamentals(context)}"
         )
         return _SYSTEM, user

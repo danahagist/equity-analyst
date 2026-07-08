@@ -36,10 +36,13 @@ class LLMClient(Protocol):
         system: str,
         prompt: str,
         schema: dict | None = None,
+        allow_tools: bool = True,
     ) -> LLMResponse:
         """Run a completion for ``role``.
 
         ``schema`` (a JSON Schema) forces structured output and populates
-        :attr:`LLMResponse.parsed`. Web search is enabled per the role's config.
+        :attr:`LLMResponse.parsed`. Web search is enabled per the role's config
+        unless ``allow_tools`` is False (used for extraction passes that must
+        not trigger new searches).
         """
         ...
