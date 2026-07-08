@@ -12,10 +12,14 @@ from equity_analyst.llm.config import (  # noqa: E402
     ROLE_PORTFOLIO_MANAGER,
     ROLE_RESEARCH,
 )
+from equity_analyst.forecast.engine import EngineConfig, ForecastEngine  # noqa: E402
 from equity_analyst.pipeline import run_committee  # noqa: E402
 from equity_analyst.storage import connect  # noqa: E402
 from tests.fixtures import FakeDataSource  # noqa: E402
 from tests.fixtures.llm import FakeLLMClient  # noqa: E402
+
+# Pipeline tests exercise orchestration, not the engine — keep the engine light.
+_FAST_ENGINE = ForecastEngine(config=EngineConfig(max_windows=4, use_ml=False))
 
 
 def _llm() -> FakeLLMClient:
@@ -33,6 +37,7 @@ def test_run_committee_end_to_end(tmp_path) -> None:
     result = run_committee(
         "test",
         data_source=FakeDataSource(days=500),
+        engine=_FAST_ENGINE,
         llm=_llm(),
         output_dir=tmp_path,
         conn=conn,
@@ -62,7 +67,9 @@ def test_run_survives_one_failing_analyst(tmp_path) -> None:
     # LLM returns no verdict for Research -> verdict_from_parsed raises -> excluded.
     llm = _llm()
     del llm.verdicts[ROLE_RESEARCH]
-    result = run_committee("TEST", data_source=FakeDataSource(days=500), llm=llm)
+    result = run_committee(
+        "TEST", data_source=FakeDataSource(days=500), engine=_FAST_ENGINE, llm=llm
+    )
     assert "Research" in [name for name, _ in result.failures]
     assert len(result.verdicts) == 3  # run still completes
     assert "could not be reached" in result.report_md

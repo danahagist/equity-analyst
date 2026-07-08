@@ -20,7 +20,9 @@ def result() -> ForecastResult:
 def test_returns_all_horizons(result: ForecastResult) -> None:
     assert [h.label for h in result.horizons] == ["1d", "1w", "1m", "1y"]
     assert result.ticker == "TEST"
-    assert set(result.models_considered) == {BASELINE_NAME, "Theta", "AutoETS"}
+    # Statistical models always run; LGB joins when history supports conformal.
+    assert {BASELINE_NAME, "Theta", "AutoETS", "AutoARIMA"} <= set(result.models_considered)
+    assert "LGB" in result.models_considered  # 900 bars is plenty
 
 
 def test_intervals_are_ordered_and_contain_point(result: ForecastResult) -> None:
@@ -29,8 +31,10 @@ def test_intervals_are_ordered_and_contain_point(result: ForecastResult) -> None
 
 
 def test_intervals_widen_with_horizon(result: ForecastResult) -> None:
-    widths = [h.upper - h.lower for h in result.horizons]
-    assert widths == sorted(widths)  # monotonically non-decreasing with horizon
+    # Different models may win different horizons, so adjacent widths aren't
+    # strictly monotone — but 1y must be far wider than 1d (honest uncertainty).
+    widths = {h.label: h.upper - h.lower for h in result.horizons}
+    assert widths["1y"] > widths["1m"] > widths["1d"]
 
 
 def test_honesty_flags_are_consistent(result: ForecastResult) -> None:
