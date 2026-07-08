@@ -26,9 +26,10 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# Data / outputs (research artifacts, cached API pulls)
-data/
-outputs/
+# Data / outputs (research artifacts, cached API pulls).
+# Anchored to repo root so they don't shadow the src/equity_analyst/data package.
+/data/
+/outputs/
 *.csv
 *.parquet
 *.xlsx
