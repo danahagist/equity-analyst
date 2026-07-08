@@ -23,7 +23,14 @@ Cite what you found (source and rough date) in your evidence. Distinguish confir
 facts from speculation. Then commit to a rated verdict on the −2…+2 scale (−2 Strong \
 Sell … +2 Strong Buy) reflecting how the news/catalyst picture bears on the stock, \
 with your conviction, the horizon it applies to, and the supporting evidence. This is \
-research analysis, not financial advice."""
+research analysis, not financial advice.
+
+Structure your written analysis under exactly these markdown sub-headings, in this \
+order (the report template depends on it):
+#### Recent Developments
+#### Sentiment Read
+#### Catalyst Calendar
+#### Bottom Line"""
 
 
 class NewsSocialAnalyst(LLMAnalyst):

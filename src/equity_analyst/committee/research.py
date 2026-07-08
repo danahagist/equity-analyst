@@ -22,7 +22,14 @@ Cite sources and dates in your evidence, and note when data is stale or thin. We
 the third-party picture — do not simply echo the consensus if the evidence warrants \
 skepticism. Then commit to a rated verdict on the −2…+2 scale (−2 Strong Sell … +2 \
 Strong Buy) with your conviction, the horizon it applies to, and the supporting \
-evidence. This is research analysis, not financial advice."""
+evidence. This is research analysis, not financial advice.
+
+Structure your written analysis under exactly these markdown sub-headings, in this \
+order (the report template depends on it):
+#### Consensus Picture
+#### Recent Analyst Actions
+#### Where the Street May Be Wrong
+#### Bottom Line"""
 
 
 class ResearchAnalyst(LLMAnalyst):

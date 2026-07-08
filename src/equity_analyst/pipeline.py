@@ -151,6 +151,9 @@ def run_committee(
         pm=pm,
         last_price=last_price,
         failures=failures,
+        fundamentals=context.fundamentals,
+        analyst_info=context.analyst_info,
+        forecast_rows=snapshot.forecast.horizon_rows(),
     )
 
     output_path = None
@@ -227,22 +230,4 @@ def _persist(
         blended_score=consensus.blended_score,
         report_md=report_md,
     )
-    save_forecast_rows(
-        conn,
-        ticker,
-        as_of,
-        [
-            {
-                "label": h.label,
-                "target_date": h.target_date,
-                "model": h.model,
-                "point": h.point,
-                "lower": h.lower,
-                "upper": h.upper,
-                "interval_level": h.interval_level,
-                "beats_baseline": h.beats_baseline,
-                "n_windows": h.n_backtest_windows,
-            }
-            for h in forecast.horizons
-        ],
-    )
+    save_forecast_rows(conn, ticker, as_of, forecast.horizon_rows())

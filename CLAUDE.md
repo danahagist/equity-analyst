@@ -64,6 +64,21 @@ tools — don't collapse this back into one structured call.
    fatal. If the PM call itself fails, the report falls back to the mechanical
    consensus, clearly labeled low-conviction.
 
+### Report template (fixed — don't reorder ad hoc)
+
+Every run renders the same research-report skeleton (`report.py`):
+header/disclaimer → **Company snapshot** + Street view (the grounded
+fact-sheet) → **Committee consensus** → **Portfolio Manager** (final call,
+synthesis, holding-period guidance, key risks) → **Analyst sections**
+(Technical's forecast as a structured table with per-horizon skill flags; each
+LLM seat's key points + full writeup) → excluded analysts (if any) →
+**Methodology & data**. Writeups carry templated sub-headings enforced by the
+seat prompts (Fundamental: Business & Moat / Financial Health / Valuation /
+Competitive Landscape / Bottom Line; News/Social: Recent Developments /
+Sentiment Read / Catalyst Calendar / Bottom Line; Research: Consensus Picture /
+Recent Analyst Actions / Where the Street May Be Wrong / Bottom Line). Change
+the template deliberately, in one place, for both modes at once.
+
 ## Architecture decisions (settled)
 
 - **LLM execution — two modes, keyless is the default:**

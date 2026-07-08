@@ -70,6 +70,12 @@ separate API bill.
 
 ## How to read the report
 
+Every report follows the same fixed template, so tickers and runs are directly
+comparable: **Company snapshot** (the grounded fact-sheet) → **Committee
+consensus** → **Portfolio Manager** (final call, holding-period guidance,
+risks) → **Analyst sections** (the Technical forecast table, then each seat's
+key points + structured writeup) → **Methodology**.
+
 **Start with the Consensus block, not the final call.** The vote split and
 dissent list *are* the product:
 

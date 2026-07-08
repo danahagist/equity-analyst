@@ -90,25 +90,7 @@ def prep_packet(
 
     if conn is not None:
         upsert_prices(conn, ticker, snapshot.prices)
-        save_forecast_rows(
-            conn,
-            ticker,
-            as_of,
-            [
-                {
-                    "label": h.label,
-                    "target_date": h.target_date,
-                    "model": h.model,
-                    "point": h.point,
-                    "lower": h.lower,
-                    "upper": h.upper,
-                    "interval_level": h.interval_level,
-                    "beats_baseline": h.beats_baseline,
-                    "n_windows": h.n_backtest_windows,
-                }
-                for h in forecast.horizons
-            ],
-        )
+        save_forecast_rows(conn, ticker, as_of, forecast.horizon_rows())
 
     runs_dir.mkdir(parents=True, exist_ok=True)
     packet_path = runs_dir / f"{ticker}-{as_of}-packet.json"
@@ -118,6 +100,7 @@ def prep_packet(
         "as_of": as_of,
         "last_price": context.last_price,
         "technical_verdict": asdict(technical),
+        "forecast_rows": forecast.horizon_rows(),
         "briefings": briefings,
         "fundamentals": context.fundamentals,
         "analyst_info": context.analyst_info,
@@ -273,6 +256,9 @@ def finalize_run(
         pm=pm,
         last_price=packet.get("last_price"),
         failures=failures,
+        fundamentals=packet.get("fundamentals"),
+        analyst_info=packet.get("analyst_info"),
+        forecast_rows=packet.get("forecast_rows"),
     )
 
     output_path = None

@@ -56,3 +56,21 @@ class ForecastResult:
 
     def by_label(self, label: str) -> HorizonForecast | None:
         return next((h for h in self.horizons if h.label == label), None)
+
+    def horizon_rows(self) -> list[dict]:
+        """Plain-dict rows (one per horizon) — the shape shared by SQLite
+        persistence, the session packet, and the report's forecast table."""
+        return [
+            {
+                "label": h.label,
+                "target_date": h.target_date,
+                "model": h.model,
+                "point": h.point,
+                "lower": h.lower,
+                "upper": h.upper,
+                "interval_level": h.interval_level,
+                "beats_baseline": h.beats_baseline,
+                "n_windows": h.n_backtest_windows,
+            }
+            for h in self.horizons
+        ]

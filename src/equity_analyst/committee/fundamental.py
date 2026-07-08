@@ -24,7 +24,15 @@ Ground every claim in the data provided. Do NOT invent figures; if a needed data
 point is missing, reason qualitatively and say so. Then commit to a rated verdict on \
 the −2…+2 scale (−2 Strong Sell, −1 Sell, 0 Hold, +1 Buy, +2 Strong Buy) with your \
 conviction, the horizon your rating applies to, and the evidence behind it. This is \
-research analysis, not financial advice."""
+research analysis, not financial advice.
+
+Structure your written analysis under exactly these markdown sub-headings, in this \
+order (the report template depends on it):
+#### Business & Moat
+#### Financial Health
+#### Valuation
+#### Competitive Landscape
+#### Bottom Line"""
 
 
 class FundamentalAnalyst(LLMAnalyst):
