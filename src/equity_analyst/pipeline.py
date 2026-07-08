@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
 from equity_analyst.committee.base import AnalystContext
 from equity_analyst.committee.consensus import ConsensusSummary, compute_consensus
 from equity_analyst.committee.fundamental import FundamentalAnalyst
@@ -28,7 +30,7 @@ from equity_analyst.forecast.engine import ForecastEngine
 from equity_analyst.forecast.types import ForecastResult
 from equity_analyst.llm.base import LLMClient
 from equity_analyst.report import build_report
-from equity_analyst.storage import save_forecast_rows, save_run
+from equity_analyst.storage import save_forecast_rows, save_run, upsert_prices
 
 
 @dataclass
@@ -49,6 +51,7 @@ class MarketSnapshot:
 
     context: AnalystContext
     forecast: ForecastResult
+    prices: pd.DataFrame  # tidy daily bars — persisted so skill checks have realized prices
 
     @property
     def as_of(self) -> str:
@@ -87,7 +90,7 @@ def gather_market_data(
         analyst_info=analyst_info,
         forecast=forecast,
     )
-    return MarketSnapshot(context=context, forecast=forecast)
+    return MarketSnapshot(context=context, forecast=forecast, prices=prices)
 
 
 def run_committee(
@@ -108,7 +111,7 @@ def run_committee(
     snapshot = gather_market_data(
         ticker, data_source=data_source, engine=engine, period=period, progress=progress
     )
-    context, forecast = snapshot.context, snapshot.forecast
+    context = snapshot.context
     as_of = snapshot.as_of
     last_price = context.last_price
 
@@ -157,7 +160,7 @@ def run_committee(
         output_path.write_text(report_md)
 
     if conn is not None:
-        _persist(conn, ticker, as_of, forecast, consensus, pm, report_md, now)
+        _persist(conn, ticker, as_of, snapshot, consensus, pm, report_md, now)
 
     return RunResult(
         ticker=ticker,
@@ -204,13 +207,15 @@ def _persist(
     conn: sqlite3.Connection,
     ticker: str,
     as_of: str,
-    forecast: ForecastResult,
+    snapshot: MarketSnapshot,
     consensus: ConsensusSummary,
     pm: PMSynthesis,
     report_md: str,
     now: str | None,
 ) -> None:
+    forecast = snapshot.forecast
     created_at = now or datetime.now(timezone.utc).isoformat()
+    upsert_prices(conn, ticker, snapshot.prices)
     save_run(
         conn,
         ticker=ticker,

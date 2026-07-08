@@ -42,7 +42,7 @@ from equity_analyst.data.base import MarketDataSource
 from equity_analyst.forecast.engine import ForecastEngine
 from equity_analyst.pipeline import RunResult, _mechanical_pm, gather_market_data
 from equity_analyst.report import build_report
-from equity_analyst.storage import save_forecast_rows, save_run
+from equity_analyst.storage import save_forecast_rows, save_run, upsert_prices
 
 # The LLM seats Claude Code performs, in briefing order.
 LLM_SEATS = ("Fundamental", "News/Social", "Research")
@@ -89,6 +89,7 @@ def prep_packet(
         briefings[seat] = {"system": system, "prompt": prompt, "web_search": needs_search}
 
     if conn is not None:
+        upsert_prices(conn, ticker, snapshot.prices)
         save_forecast_rows(
             conn,
             ticker,

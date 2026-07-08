@@ -6,9 +6,27 @@ description: Evaluate whether the forecasting engine has real predictive skill b
 # Forecast-vs-actual skill check
 
 The whole honesty premise of this tool (see CLAUDE.md) is that forecast claims
-get audited. Every run stores its per-horizon forecast in the `forecast` table
-of `data/equity_analyst.db`; each row has a `target_date`. Once target dates
-have passed, realized prices tell us whether the engine has skill.
+get audited.
+
+## First: run the built-in report
+
+```bash
+equity-analyst skill-report            # all tickers
+equity-analyst skill-report --ticker AAPL
+```
+
+It joins matured forecasts with realized prices from `price_bar` (every run
+stores the price history it pulled, so realized prices backfill automatically),
+reports coverage vs nominal, MAE vs a naive last-price forecast, the
+`beats_baseline` subset on trial, and flags small samples. Present its output
+and interpret per the guidance below. Use the manual method that follows only
+for deeper slicing (per-model, per-ticker cohorts) the command doesn't offer.
+
+## Background: what's being measured
+
+Every run stores its per-horizon forecast in the `forecast` table of
+`data/equity_analyst.db`; each row has a `target_date`. Once target dates have
+passed, realized prices tell us whether the engine has skill.
 
 ## What to measure
 

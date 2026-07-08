@@ -17,7 +17,7 @@ import sys
 
 from equity_analyst import __version__
 
-_COMMANDS = ("analyze", "prep", "consensus", "finalize")
+_COMMANDS = ("analyze", "prep", "consensus", "finalize", "compare", "skill-report", "export")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,6 +62,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_finalize.add_argument("--no-db", action="store_true", help="Do not persist to SQLite")
 
+    p_compare = sub.add_parser(
+        "compare", help="Rank the latest stored run per ticker side by side"
+    )
+    p_compare.add_argument(
+        "tickers", nargs="*", help="Tickers to compare (default: every stored ticker)"
+    )
+
+    p_skill = sub.add_parser(
+        "skill-report", help="Audit stored forecasts against realized prices"
+    )
+    p_skill.add_argument("--ticker", help="Restrict the audit to one ticker")
+
+    p_export = sub.add_parser("export", help="Export the SQLite record to CSV or Excel")
+    p_export.add_argument(
+        "--format", choices=("csv", "xlsx"), default="csv", help="Export format (default: csv)"
+    )
+    p_export.add_argument("--out", help="Output directory (default: outputs/export)")
+
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
@@ -71,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         "prep": _cmd_prep,
         "consensus": _cmd_consensus,
         "finalize": _cmd_finalize,
+        "compare": _cmd_compare,
+        "skill-report": _cmd_skill_report,
+        "export": _cmd_export,
     }[args.command](args)
 
 
@@ -196,6 +217,61 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
     print(result.report_md)
     if result.output_path is not None:
         print(f"\n[saved to {result.output_path}]")
+    return 0
+
+
+def _cmd_compare(args: argparse.Namespace) -> int:
+    from equity_analyst.comparison import build_comparison, load_latest_runs
+    from equity_analyst.config import get_settings
+    from equity_analyst.storage import connect
+
+    settings = get_settings()
+    conn = connect(settings.db_path)
+    try:
+        rows = load_latest_runs(conn, args.tickers or None)
+        print(build_comparison(rows, requested=args.tickers or None))
+    finally:
+        conn.close()
+    return 0
+
+
+def _cmd_skill_report(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.skill_report import build_skill_report, resolve_forecasts
+    from equity_analyst.storage import connect
+
+    settings = get_settings()
+    today = date.today().isoformat()
+    conn = connect(settings.db_path)
+    try:
+        resolved, unresolvable = resolve_forecasts(conn, today=today, ticker=args.ticker)
+        print(build_skill_report(resolved, unresolvable=unresolvable, today=today))
+    finally:
+        conn.close()
+    return 0
+
+
+def _cmd_export(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.storage import connect
+    from equity_analyst.storage.export import export_tables
+
+    settings = get_settings()
+    out_dir = Path(args.out) if args.out else settings.outputs_dir / "export"
+    conn = connect(settings.db_path)
+    try:
+        paths = export_tables(conn, out_dir, fmt=args.format)
+    except RuntimeError as exc:
+        print(f"error: {exc}")
+        return 1
+    finally:
+        conn.close()
+    for path in paths:
+        print(f"wrote {path}")
     return 0
 
 

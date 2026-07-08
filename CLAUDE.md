@@ -158,12 +158,14 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - [x] Claude-Code-native keyless mode (prep/consensus/finalize + session module)
   — the default; API-key `analyze` mode kept as the optional full-auto path.
 
+- [x] `skill-report` (forecast-vs-actual audit; price bars persisted every run
+  so realized prices backfill), `compare` (ranked latest-run screen), `export`
+  (CSV / xlsx via the `excel` extra).
+
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output
   is the remaining unknown; synthetic fixtures can't validate prompt quality.
-- Forecast-vs-actual skill report once stored forecasts mature (the
-  `forecast-skill-check` skill documents the method).
-- CSV/Excel export command over SQLite.
-- Multi-ticker comparison mode (run N tickers, one comparative summary).
+- Revisit the skill report once ~30+ forecasts/horizon have matured — that's
+  when its verdict on forecaster skill starts meaning something.
 - Optional neural models behind the `neural` extra, gated on beating the
   current stack in backtest.

@@ -99,15 +99,17 @@ as decoration around the interval.
 
 ## Best practices
 
-- **Compare tickers on the same day**, not across days — market context shifts.
+- **Compare tickers on the same day**, not across days — market context
+  shifts. `equity-analyst compare` ranks your latest runs and warns you when
+  they span different dates.
 - **Re-run on a cadence** (weekly, or after earnings/major news), not
   continuously. Verdicts move with information, not with re-rolls.
-- **Track the tool's record.** Every run stores forecast-vs-actual data in
-  SQLite. Periodically ask Claude Code to *"check whether the forecaster has
-  skill yet"* (the `forecast-skill-check` skill) — it audits whether the 80%
-  intervals actually contain reality ~80% of the time. If the tool has no
-  skill at a horizon, believe it — and weight the qualitative seats
-  accordingly.
+- **Track the tool's record.** Every run stores its forecasts and price
+  history in SQLite; `equity-analyst skill-report` audits whether the 80%
+  intervals actually contain reality ~80% of the time and whether the models
+  beat a naive forecast out of sample. Realized prices backfill automatically
+  as you keep running. If the tool has no skill at a horizon, believe it — and
+  weight the qualitative seats accordingly.
 - **Don't cherry-pick.** If you run 20 tickers and act only on the most
   bullish report, you've reinvented selection bias. Decide your universe
   first.
@@ -125,10 +127,12 @@ as decoration around the interval.
 The repo ships skills, so plain requests work:
 
 - *"Run the committee on NVDA"* → the full staged flow above.
-- *"Check whether the forecaster has skill yet"* → forecast-vs-actual audit.
+- *"Check whether the forecaster has skill yet"* → `equity-analyst skill-report`.
+- *"Compare my tickers"* → `equity-analyst compare` (+ the full reports in
+  `outputs/` for the detail).
+- *"Export everything to Excel"* → `equity-analyst export --format xlsx`
+  (needs `pip install -e ".[excel]"`).
 - *"Add a macro analyst seat"* → guided by the `add-analyst` recipe.
-- *"Compare the last AAPL and MSFT reports"* → they're markdown in `outputs/`
-  and rows in SQLite; Claude Code can read both.
 
 `CLAUDE.md` is the working agreement — architecture decisions, honesty
 guardrails, and how decisions get made. Read it before changing anything

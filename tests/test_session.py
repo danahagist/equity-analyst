@@ -56,9 +56,11 @@ def test_prep_writes_packet_and_briefings(tmp_path) -> None:
     for seat in ["Fundamental", "News/Social", "Research"]:
         assert f"### {seat}" in md
     assert "equity-analyst consensus TEST" in md
-    # Forecasts persisted at prep time (skill tracking works even if the
-    # session is never finalized).
+    # Forecasts AND price bars persisted at prep time — skill tracking works
+    # even if the session is never finalized, and later runs backfill realized
+    # prices for earlier forecasts.
     assert conn.execute("SELECT COUNT(*) FROM forecast").fetchone()[0] == 4
+    assert conn.execute("SELECT COUNT(*) FROM price_bar").fetchone()[0] == 500
 
     packet = load_packet(tmp_path / "runs", "test")
     assert packet["as_of"] == result.as_of

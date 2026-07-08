@@ -69,6 +69,20 @@ per-horizon forecasts in SQLite (`data/equity_analyst.db`) — the system of
 record, so forecast-vs-actual skill can be audited over time. `data/` and
 `outputs/` are gitignored.
 
+### Working with accumulated runs
+
+```bash
+equity-analyst compare               # rank the latest run per ticker side by side
+equity-analyst compare AAPL MSFT     # …or just these tickers
+equity-analyst skill-report          # audit stored forecasts vs realized prices
+equity-analyst export                # dump the SQLite record to CSV (or --format xlsx)
+```
+
+The skill report is the honesty loop: it checks whether the 80% intervals
+actually contained reality ~80% of the time and whether the models beat a
+naive forecast out of sample. Every run stores the price history it pulled, so
+realized prices backfill automatically as you keep running.
+
 ### Optional: full-auto mode (API key)
 
 For unattended runs (cron a weekly sweep), add `ANTHROPIC_API_KEY` to `.env`
