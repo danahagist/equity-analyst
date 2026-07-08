@@ -16,10 +16,11 @@ flagged risk.
 | **Research** | existing analyst ratings, price targets, 3rd-party research | analyst data + Claude web search |
 | **Portfolio Manager** | synthesize, big picture, risk, final call | Claude (Opus) over the other four |
 
-Each analyst emits a structured verdict — `rating` (−2…+2), `conviction`,
-`horizon`, `evidence`. A deterministic function summarizes the agreement; the PM
-authors the synthesis and may override it with justification. See
-[`CLAUDE.md`](CLAUDE.md) for the full design.
+Each analyst writes a full analysis and emits a structured verdict — `rating`
+(−2…+2), `conviction`, `horizon`, key evidence. A deterministic function
+summarizes the agreement; the PM authors the synthesis (with justification for
+any override) plus **holding-period guidance** for ~1-week, ~1-month, and
+~1-year holders. See [`CLAUDE.md`](CLAUDE.md) for the full design.
 
 ## Honesty by design
 
@@ -35,6 +36,9 @@ authors the synthesis and may override it with justification. See
 - Python 3.11+
 - An Anthropic API key (`ANTHROPIC_API_KEY`) for the LLM analysts
 - Market data via `yfinance` (free, no key)
+
+**New here? Read [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)** — install,
+first run, how to read the report correctly, and best practices.
 
 ## Setup
 

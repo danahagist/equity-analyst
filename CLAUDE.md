@@ -37,9 +37,16 @@ now live inside the relevant analysts rather than running as a flat list.
 ### Structured verdict (every analyst emits this)
 
 - `rating`: integer scale −2…+2 (Strong Sell, Sell, Hold, Buy, Strong Buy)
-- `conviction`: confidence in the rating (e.g. low/medium/high or 0–1)
+- `conviction`: confidence in the rating (low/medium/high)
 - `horizon`: the time horizon the rating applies to
-- `evidence`: the key supporting points (the analyst's written analysis)
+- `evidence`: concise key supporting points
+- `writeup`: the analyst's full written analysis (LLM seats)
+
+**LLM seats are two-phase:** an unconstrained research/analysis completion
+(with web search where the seat has it) followed by a tool-free extraction pass
+that formalizes the verdict the writeup supports. Forcing long-form analysis
+through a JSON schema degrades reasoning quality and is fragile with search
+tools — don't collapse this back into one structured call.
 
 ### Consensus mechanism
 
@@ -47,10 +54,15 @@ now live inside the relevant analysts rather than running as a flat list.
    the five verdicts (e.g. "4 of 5 lean Buy; Fundamental dissents on valuation").
 2. The **PM (LLM)** reads that summary *plus* each analyst's full writeup and
    authors the synthesis. It may override the mechanical blend but must justify
-   any divergence.
+   any divergence. It also emits **holding-period guidance** (one line each for
+   ~1w/~1m/~1y), with an explicit mandate not to manufacture short-term views
+   the Technical skill flags don't support.
 3. Report leads with the **agreement picture**, not a single false-precision
    number. Any blended score is secondary. Disagreements are called out
    explicitly.
+4. **Failure isolation:** one errored analyst is excluded and disclosed, not
+   fatal. If the PM call itself fails, the report falls back to the mechanical
+   consensus, clearly labeled low-conviction.
 
 ## Architecture decisions (settled)
 
@@ -87,14 +99,17 @@ confident point prices. If a model can't beat naive drift at a horizon, the tool
 says so and reports drift + a wide interval.
 
 **Architecture — M4/M5-competition-informed (accurate + mainstream):**
-- Baseline to beat: random-walk-with-drift / seasonal-naive.
+- Baseline to beat: random-walk-with-drift.
 - Statistical: AutoARIMA, AutoETS, Theta (native prediction intervals).
 - ML: LightGBM on lag/rolling features + **conformal prediction** for calibrated
-  intervals.
+  intervals; degrades gracefully when history can't support conformal
+  calibration at a horizon.
 - Neural (optional extra, off by default): N-HITS / TFT with quantile loss — used
-  at a horizon only if it beats the above in backtest.
-- Selection: rolling-origin backtest per horizon; pick/ensemble whatever beats the
-  baseline on error *and* interval coverage.
+  at a horizon only if it beats the above in backtest. (Not yet implemented.)
+- Selection: rolling-origin backtest (up to 16 windows); per horizon, a
+  challenger displaces the baseline only if it wins on point error **and** is at
+  least as well-calibrated (Winkler interval score), judged pairwise on shared
+  windows, with ≥3 windows required to qualify.
 - Horizons: 1 day, 1 week, 1 month, 1 year. Longer horizons are honestly
   presented as drift + wide interval.
 
@@ -119,6 +134,9 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - Keep each committee analyst and each external dependency (LLM, data source) in
   its own module with a narrow interface, so any one can be swapped or tested in
   isolation.
+- Project skills live in `.claude/skills/` (`run-analysis`,
+  `forecast-skill-check`, `add-analyst`) — use and maintain them. User-facing
+  docs live in `docs/` (`GETTING_STARTED.md`).
 
 ## Status / roadmap
 
@@ -129,9 +147,17 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - [x] Fundamental, News/Social, Research analysts.
 - [x] Consensus function + Portfolio Manager synthesis.
 - [x] Markdown report + CLI wiring (`equity-analyst TICKER`).
+- [x] Production review pass: full forecasting architecture (LightGBM+conformal,
+  AutoARIMA, calibration-gated selection), two-phase analysts, pause_turn
+  handling, PM fallback, holding-period guidance, progress narration.
+- [x] Project skills (`.claude/skills/`) + `docs/GETTING_STARTED.md`.
 
-**v1 is feature-complete end-to-end.** Natural next steps: a live run against
-real data (needs a network path to Yahoo + an API key — see the egress note),
-a forecast-vs-actual skill report off the stored `forecast` table, a CSV/Excel
-export command, and the optional neural forecasting models behind the `neural`
-extra.
+**Next steps (in rough order of value):**
+- First live run on Dana's machine — prompt tuning against real Claude output
+  is the remaining unknown; synthetic fixtures can't validate prompt quality.
+- Forecast-vs-actual skill report once stored forecasts mature (the
+  `forecast-skill-check` skill documents the method).
+- CSV/Excel export command over SQLite.
+- Multi-ticker comparison mode (run N tickers, one comparative summary).
+- Optional neural models behind the `neural` extra, gated on beating the
+  current stack in backtest.
