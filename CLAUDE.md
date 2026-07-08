@@ -123,9 +123,15 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 ## Status / roadmap
 
 - [x] Scaffold (package, CLI stub, tests, tooling) — on `main`.
-- [ ] Data-access module (yfinance) + SQLite schema.
-- [ ] Forecasting engine (Technical analyst) with backtest harness.
-- [ ] LLM client module (Anthropic) + prompt library.
-- [ ] Fundamental, News/Social, Research analysts.
-- [ ] Consensus function + Portfolio Manager synthesis.
-- [ ] Markdown report + CLI wiring.
+- [x] Data-access module (yfinance) + SQLite schema.
+- [x] Forecasting engine (Technical analyst) with backtest harness.
+- [x] LLM client module (Anthropic) + prompt library.
+- [x] Fundamental, News/Social, Research analysts.
+- [x] Consensus function + Portfolio Manager synthesis.
+- [x] Markdown report + CLI wiring (`equity-analyst TICKER`).
+
+**v1 is feature-complete end-to-end.** Natural next steps: a live run against
+real data (needs a network path to Yahoo + an API key — see the egress note),
+a forecast-vs-actual skill report off the stored `forecast` table, a CSV/Excel
+export command, and the optional neural forecasting models behind the `neural`
+extra.

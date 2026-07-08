@@ -27,6 +27,35 @@ CREATE TABLE IF NOT EXISTS fundamentals (
     data    TEXT    NOT NULL,          -- JSON blob of fundamental facts
     PRIMARY KEY (ticker, as_of)
 );
+
+-- One row per committee run: the recommendation of record.
+CREATE TABLE IF NOT EXISTS committee_run (
+    ticker            TEXT NOT NULL,
+    as_of             TEXT NOT NULL,   -- forecast origin date
+    created_at        TEXT NOT NULL,   -- ISO timestamp of the run
+    pm_rating         INTEGER,
+    pm_conviction     TEXT,
+    consensus_leaning TEXT,
+    blended_score     REAL,
+    report_md         TEXT,
+    PRIMARY KEY (ticker, as_of)
+);
+
+-- Per-horizon forecast, kept so forecast-vs-actual skill can be checked later.
+CREATE TABLE IF NOT EXISTS forecast (
+    ticker         TEXT NOT NULL,
+    as_of          TEXT NOT NULL,
+    label          TEXT NOT NULL,      -- 1d | 1w | 1m | 1y
+    target_date    TEXT,
+    model          TEXT,
+    point          REAL,
+    lower          REAL,
+    upper          REAL,
+    interval_level INTEGER,
+    beats_baseline INTEGER,            -- 0/1
+    n_windows      INTEGER,
+    PRIMARY KEY (ticker, as_of, label)
+);
 """
 
 

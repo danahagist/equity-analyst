@@ -7,7 +7,9 @@ from equity_analyst.committee.base import (
     format_analyst_info,
     format_fundamentals,
 )
+from equity_analyst.committee.consensus import ConsensusSummary, compute_consensus
 from equity_analyst.committee.fundamental import FundamentalAnalyst
+from equity_analyst.committee.portfolio_manager import PMSynthesis, PortfolioManager
 from equity_analyst.committee.news_social import NewsSocialAnalyst
 from equity_analyst.committee.research import ResearchAnalyst
 from equity_analyst.committee.technical import TechnicalAnalyst, rating_from_forecast
@@ -25,6 +27,10 @@ __all__ = [
     "LLMAnalyst",
     "format_fundamentals",
     "format_analyst_info",
+    "compute_consensus",
+    "ConsensusSummary",
+    "PortfolioManager",
+    "PMSynthesis",
     "TechnicalAnalyst",
     "rating_from_forecast",
     "FundamentalAnalyst",

@@ -4,7 +4,9 @@ from equity_analyst.storage.db import connect, init_schema
 from equity_analyst.storage.repository import (
     load_latest_fundamentals,
     load_prices,
+    save_forecast_rows,
     save_fundamentals,
+    save_run,
     upsert_prices,
 )
 
@@ -15,4 +17,6 @@ __all__ = [
     "load_prices",
     "save_fundamentals",
     "load_latest_fundamentals",
+    "save_run",
+    "save_forecast_rows",
 ]

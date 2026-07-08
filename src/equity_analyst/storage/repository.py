@@ -75,6 +75,46 @@ def load_latest_fundamentals(conn: sqlite3.Connection, ticker: str) -> dict | No
     return json.loads(row["data"]) if row else None
 
 
+def save_run(
+    conn: sqlite3.Connection,
+    *,
+    ticker: str,
+    as_of: str,
+    created_at: str,
+    pm_rating: int,
+    pm_conviction: str,
+    consensus_leaning: str,
+    blended_score: float,
+    report_md: str,
+) -> None:
+    """Insert-or-replace the recommendation-of-record for a run."""
+    conn.execute(
+        "INSERT OR REPLACE INTO committee_run (ticker, as_of, created_at, pm_rating, "
+        "pm_conviction, consensus_leaning, blended_score, report_md) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (ticker, as_of, created_at, pm_rating, pm_conviction, consensus_leaning,
+         float(blended_score), report_md),
+    )
+    conn.commit()
+
+
+def save_forecast_rows(conn: sqlite3.Connection, ticker: str, as_of: str, rows: list[dict]) -> int:
+    """Store per-horizon forecast rows (for later forecast-vs-actual skill checks)."""
+    conn.executemany(
+        "INSERT OR REPLACE INTO forecast (ticker, as_of, label, target_date, model, "
+        "point, lower, upper, interval_level, beats_baseline, n_windows) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (ticker, as_of, r["label"], r["target_date"], r["model"], r["point"],
+             r["lower"], r["upper"], r["interval_level"], int(r["beats_baseline"]),
+             r["n_windows"])
+            for r in rows
+        ],
+    )
+    conn.commit()
+    return len(rows)
+
+
 def _f(value: object) -> float | None:
     """Coerce to float, mapping pandas/NumPy NaN and None to SQL NULL."""
     if value is None or pd.isna(value):
