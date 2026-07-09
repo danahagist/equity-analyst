@@ -167,7 +167,7 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - Keep each committee analyst and each external dependency (LLM, data source) in
   its own module with a narrow interface, so any one can be swapped or tested in
   isolation.
-- Project skills live in `.claude/skills/` (`run-analysis`,
+- Project skills live in `.claude/skills/` (`run-analysis`, `weekly-pipeline`,
   `forecast-skill-check`, `add-analyst`) — use and maintain them. User-facing
   docs live in `docs/` (`GETTING_STARTED.md`).
 
@@ -206,29 +206,47 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
   full ranking CSV lands in `outputs/`. Committee-scale usage stays bounded:
   screen 1000 names cheaply, run the committee on the top ~20.
 
-- [x] Weekly pipeline (Dana's 4-phase funnel; [[weekly-pipeline]] skill is the
-  single entry point, each phase also standalone):
+- [x] Weekly pipeline v2 (Dana's funnel, revised 2026-07-08 after the first
+  full top-10 run; [[weekly-pipeline]] skill is the single entry point, each
+  phase also standalone):
   1. `screen` Russell 1000 → top 50 by blended score.
-  2. `prep` the committee set (forecasts).
-  3. committee on the top 10 (**selected by blended score, never by forecast
-     "upside"** — the engine has no skill vs drift at most horizons; forecast is
-     risk framing only).
-  4. `levels` — entry/exit buy/trim/target/stop from the forecast's 80%
-     intervals, **decision support only, never orders/auto-execution**.
-  5. `etf-exposure` — rank ETFs by exposure to the shortlist (broader-exposure
-     aid; sweeps a curated ETF universe, inverts top-holdings).
-  6. `notify` — email the package (stdlib SMTP; `SMTP_*` in `.env`).
+  2. `prep` all 50 (forecasts, no LLM) — feeds the veto pass + risk overlay.
+  3. `rank` — walk-down queue ordered by **blended score only**. The forecast
+     never promotes a name (no skill vs drift at most horizons; drift "upside"
+     also triple-counts the Street-gap echo) but can **demote via a
+     skill-gated veto**: a horizon whose model beat the naive baseline showing
+     negative expected return, or poor R:R at a skill-flagged 1y target.
+     Demotions sink to the bottom with reasons shown, never hidden. Promote
+     the forecast into the score only if `skill-report` (~30+ matured
+     forecasts/horizon) ever shows real skill.
+  4. Committee **walk-down**: one name at a time from the queue top until
+     **5 qualify**. The bar (`qualify`): PM Buy or better, medium+ conviction,
+     committee not split — a plain "PM said Buy" bar doesn't discriminate
+     (the 2026-07-08 run went 10-for-10 Buy). Non-qualifiers are disclosed,
+     not discarded.
+  5. `digest` — the combined decision document for the five: every analyst's
+     bottom line, consensus + dissents, PM synthesis/risks/holding-period fit,
+     levels row, ETF-exposure section, and an executive summary **authored by
+     the committee LLM** (passed via `--exec-summary-file`; the renderer never
+     fabricates it). `levels`/`etf-exposure`/`compare` remain standalone.
+  6. `notify` — email the digest (stdlib SMTP; `SMTP_*` in `.env`).
   Dana fires it himself (committee needs Claude Code as the LLM); it is not a
   hands-off cron. Guardrail: research assistance, not advice — no auto-trading.
   NOTE: the committee's web-search seats consume the Claude subscription
   session limit — run them in waves (~6 at a time), not one blast, or a large
   batch will hit the wall mid-run (happened 2026-07-08). Per-seat verdict files
   make a hit-the-wall run resumable: just re-run the missing seats.
+  Web-search discipline (in the seat prompts, not tooling): Research seat is
+  pinned to free aggregators (stockanalysis.com, MarketBeat, TipRanks,
+  Benzinga; ≤3-4 searches); News/Social seat is capped at 4 searches,
+  preferring Yahoo Finance / Reuters / CNBC / company IR but free to chase
+  catalyst-specific leads.
 
 **Next steps (in rough order of value):**
-- First live run on Dana's machine — prompt tuning against real Claude output
-  is the remaining unknown; synthetic fixtures can't validate prompt quality.
+- First full v2 pipeline run (screen → rank → walk-down → digest) on Dana's
+  machine — validates the veto pass and qualification bar against live data.
 - Revisit the skill report once ~30+ forecasts/horizon have matured — that's
-  when its verdict on forecaster skill starts meaning something.
+  when its verdict on forecaster skill starts meaning something (and the
+  evidence gate for ever promoting the forecast into the ranking).
 - Optional neural models behind the `neural` extra, gated on beating the
   current stack in backtest.

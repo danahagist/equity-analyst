@@ -16,7 +16,9 @@
       "ToolSearch",
       "TodoWrite",
       "WebFetch",
+      "WebFetch(*)",
       "WebSearch",
+      "WebSearch(*)",
       "NotebookEdit"
     ],
     "ask": [

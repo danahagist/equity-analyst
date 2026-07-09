@@ -24,8 +24,11 @@ _COMMANDS = (
     "finalize",
     "submit-verdict",
     "screen",
+    "rank",
+    "qualify",
     "levels",
     "etf-exposure",
+    "digest",
     "notify",
     "compare",
     "skill-report",
@@ -129,6 +132,31 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_screen.add_argument("--quiet", action="store_true", help="Suppress progress messages")
 
+    p_rank = sub.add_parser(
+        "rank",
+        help="Order the committee walk-down queue: blended score + skill-gated forecast veto",
+    )
+    p_rank.add_argument(
+        "tickers", nargs="*", metavar="ticker", help="Candidates (or use --screen-csv)"
+    )
+    p_rank.add_argument("--screen-csv", help="Take the top rows of a `screen` CSV")
+    p_rank.add_argument(
+        "--top", type=int, default=10, help="Rows to take from the CSV (default: 10)"
+    )
+    p_rank.add_argument("--as-of", help="Packet date (defaults to the latest per ticker)")
+
+    p_qualify = sub.add_parser(
+        "qualify",
+        help="Walk-down bar check: PM Buy+, medium+ conviction, committee not split",
+    )
+    p_qualify.add_argument(
+        "tickers", nargs="+", metavar="ticker", help="Ticker(s) with finalized sessions"
+    )
+    p_qualify.add_argument(
+        "--need", type=int, default=5, help="Qualifying names the walk-down needs (default: 5)"
+    )
+    p_qualify.add_argument("--as-of", help="Session date (defaults to the latest packet)")
+
     p_levels = sub.add_parser(
         "levels",
         help="Phase 4: forecast-interval entry/exit levels (decision support, no orders)",
@@ -153,6 +181,28 @@ def main(argv: list[str] | None = None) -> int:
         "--delay", type=float, default=0.3, help="Seconds between fetches (default: 0.3)"
     )
     p_etf.add_argument("--quiet", action="store_true", help="Suppress progress messages")
+
+    p_digest = sub.add_parser(
+        "digest",
+        help="Combined decision digest: all analysts + consensus + levels + ETFs + exec summary",
+    )
+    p_digest.add_argument(
+        "tickers", nargs="+", metavar="ticker", help="Shortlist ticker(s) with finalized sessions"
+    )
+    p_digest.add_argument("--as-of", help="Session date (defaults to the latest packet)")
+    p_digest.add_argument(
+        "--exec-summary-file", help="Markdown file with the LLM-authored executive summary"
+    )
+    p_digest.add_argument(
+        "--no-etf", action="store_true", help="Skip the ETF-exposure section (no fetches)"
+    )
+    p_digest.add_argument(
+        "--no-save", action="store_true", help="Do not write the digest to outputs/"
+    )
+    p_digest.add_argument(
+        "--delay", type=float, default=0.3, help="Seconds between ETF fetches (default: 0.3)"
+    )
+    p_digest.add_argument("--quiet", action="store_true", help="Suppress progress messages")
 
     p_notify = sub.add_parser(
         "notify", help="Email a report (stdlib SMTP; configure SMTP_* in .env)"
@@ -192,8 +242,11 @@ def main(argv: list[str] | None = None) -> int:
         "finalize": _cmd_finalize,
         "submit-verdict": _cmd_submit_verdict,
         "screen": _cmd_screen,
+        "rank": _cmd_rank,
+        "qualify": _cmd_qualify,
         "levels": _cmd_levels,
         "etf-exposure": _cmd_etf_exposure,
+        "digest": _cmd_digest,
         "notify": _cmd_notify,
         "compare": _cmd_compare,
         "skill-report": _cmd_skill_report,
@@ -439,6 +492,129 @@ def _cmd_screen(args: argparse.Namespace) -> int:
     if ranked:
         csv_path = write_screen_csv(ranked, settings.outputs_dir / f"screen-{as_of}.csv")
         print(f"\n[full ranking saved to {csv_path}]")
+    return 0
+
+
+def _cmd_rank(args: argparse.Namespace) -> int:
+    from datetime import date
+    from pathlib import Path
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.rank import build_queue, build_rank_report, read_screen_csv
+    from equity_analyst.session import load_packet
+
+    candidates: list[tuple[str, float | None]] = [(t.upper(), None) for t in args.tickers]
+    if args.screen_csv:
+        try:
+            csv_rows = read_screen_csv(Path(args.screen_csv), top=args.top)
+        except (OSError, KeyError) as exc:
+            print(f"error: cannot read screen CSV {args.screen_csv} — {exc}")
+            return 1
+        blended_by_ticker = dict(csv_rows)
+        candidates = [(t, blended_by_ticker.get(t)) for t, _ in candidates]
+        candidates += [(t, b) for t, b in csv_rows if t not in dict(candidates)]
+    if not candidates:
+        print("error: no candidates — pass tickers and/or --screen-csv")
+        return 2
+
+    settings = get_settings()
+    packets: dict[str, dict] = {}
+    for ticker, _ in candidates:
+        try:
+            packets[ticker] = load_packet(settings.runs_dir, ticker, args.as_of)
+        except (FileNotFoundError, ValueError):
+            pass  # flagged as "no packet" in the queue, not dropped
+    queue = build_queue(candidates, packets)
+    print(build_rank_report(queue, as_of=date.today().isoformat()))
+    return 0
+
+
+def _cmd_qualify(args: argparse.Namespace) -> int:
+    from equity_analyst.committee.consensus import compute_consensus
+    from equity_analyst.config import get_settings
+    from equity_analyst.digest import build_qualify_report, check_bar
+    from equity_analyst.session import load_packet, load_session_verdicts
+
+    settings = get_settings()
+    quals = []
+    for ticker in args.tickers:
+        try:
+            packet = load_packet(settings.runs_dir, ticker, args.as_of)
+            verdicts, pm, _failures = load_session_verdicts(packet)
+            quals.append(check_bar(packet["ticker"], pm, compute_consensus(verdicts)))
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}")
+    if not quals:
+        return 1
+    print(build_qualify_report(quals, need=args.need))
+    return 0
+
+
+def _cmd_digest(args: argparse.Namespace) -> int:
+    from datetime import date
+    from pathlib import Path
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.digest import build_digest
+    from equity_analyst.session import load_packet, load_session_verdicts
+
+    settings = get_settings()
+    settings.ensure_dirs()
+
+    entries = []
+    for ticker in args.tickers:
+        try:
+            packet = load_packet(settings.runs_dir, ticker, args.as_of)
+            verdicts, pm, _failures = load_session_verdicts(packet)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}")
+            continue
+        entries.append({"packet": packet, "verdicts": verdicts, "pm": pm})
+    if not entries:
+        return 1
+
+    exec_summary = None
+    if args.exec_summary_file:
+        try:
+            exec_summary = Path(args.exec_summary_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot read {args.exec_summary_file} — {exc}")
+            return 1
+
+    etf_section = None
+    if not args.no_etf:
+        from equity_analyst.data.yahoo import YahooDataSource
+        from equity_analyst.etf_exposure import (
+            DEFAULT_ETF_UNIVERSE,
+            build_exposure,
+            build_exposure_report,
+            fetch_holdings,
+        )
+
+        tickers = [e["packet"]["ticker"] for e in entries]
+        holdings, failures = fetch_holdings(
+            list(dict.fromkeys(DEFAULT_ETF_UNIVERSE)),
+            data_source=YahooDataSource(),
+            delay=args.delay,
+            progress=_progress(args),
+        )
+        etf_section = build_exposure_report(
+            build_exposure(tickers, holdings),
+            tickers=tickers,
+            top=10,
+            failures=failures,
+            as_of=date.today().isoformat(),
+        )
+
+    as_of = date.today().isoformat()
+    digest_md = build_digest(
+        entries, as_of=as_of, exec_summary=exec_summary, etf_section=etf_section
+    )
+    print(digest_md)
+    if not args.no_save:
+        out_path = settings.outputs_dir / f"digest-{as_of}.md"
+        out_path.write_text(digest_md, encoding="utf-8")
+        print(f"\n[saved to {out_path}]")
     return 0
 
 
