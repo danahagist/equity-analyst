@@ -10,6 +10,8 @@ from equity_analyst.digest import (
     build_qualify_report,
     check_bar,
     extract_bottom_line,
+    extract_section,
+    first_sentences,
 )
 
 
@@ -22,7 +24,10 @@ def _verdicts(ratings=(0, 1, 1, 1)):
             conviction="medium",
             horizon="1y",
             evidence=f"{s} evidence",
-            writeup=f"#### Bottom Line\n{s} bottom line.",
+            writeup=(
+                "#### Business & Moat\nSells widgets on subscription. Margins say moat.\n\n"
+                f"#### Bottom Line\n{s} bottom line."
+            ),
         )
         for s, r in zip(seats, ratings)
     ]
@@ -97,6 +102,15 @@ def test_extract_bottom_line() -> None:
     assert extract_bottom_line("") is None
 
 
+def test_extract_section_and_first_sentences() -> None:
+    writeup = "#### Business & Moat\nOne. Two. Three. Four.\n\n#### Bottom Line\nBuy.\n"
+    assert extract_section(writeup, "Business & Moat") == "One. Two. Three. Four."
+    assert first_sentences("One. Two. Three. Four.", n=2) == "One. Two."
+    assert first_sentences("Short only", n=2) == "Short only"
+    long = "word " * 200 + "end."
+    assert len(first_sentences(long, n=2)) <= 450 and first_sentences(long, n=2).endswith("…")
+
+
 def test_digest_assembles_all_sections() -> None:
     entries = [{"packet": _packet(), "verdicts": _verdicts(), "pm": _pm()}]
     md = build_digest(
@@ -109,6 +123,7 @@ def test_digest_assembles_all_sections() -> None:
     assert "## TEST — Buy (medium conviction, 1y)" in md
     assert "Test Corp" in md and "$5.0B" in md
     assert "### Portfolio Manager synthesis" in md and "risk one" in md
+    assert "**What it does:** Sells widgets on subscription." in md
     assert "### Seat verdicts" in md and "| Research | Buy (+1) |" in md
     assert "**Fundamental — bottom line:** Fundamental bottom line." in md
     assert "### Levels" in md and "not orders" in md

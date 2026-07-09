@@ -231,6 +231,7 @@ def build_strategy_report(
     correlations: list[tuple[str, str, float]],
     swept: int,
     as_of: str,
+    descriptions: dict[str, str] | None = None,
 ) -> str:
     n = len(candidates)
     covered_names = n - len(uncovered)
@@ -268,6 +269,21 @@ def build_strategy_report(
         lines.append(
             f"| {i} | {p.etf} | {len(p.marginal)} | {sum(p.marginal.values()):.1%} | {detail} |"
         )
+
+    if descriptions:
+        from equity_analyst.digest import first_sentences
+
+        lines += ["", "### What each fund is", ""]
+        for p in picks:
+            desc = descriptions.get(p.etf)
+            lines.append(
+                f"- **{p.etf}** — "
+                + (
+                    first_sentences(desc, n=3)
+                    if desc
+                    else "no fund description available from the provider."
+                )
+            )
 
     overlaps = [(p.etf, p.overlap) for p in picks if p.overlap]
     if overlaps:

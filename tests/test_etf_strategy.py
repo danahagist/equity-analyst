@@ -122,7 +122,10 @@ def test_strategy_report_carries_the_honesty_block() -> None:
         correlations=basket_correlations(stats),
         swept=1,
         as_of="2026-07-08",
+        descriptions={"FUND_A": "Tracks widget makers. They sell widgets for money."},
     )
+    assert "### What each fund is" in report
+    assert "**FUND_A** — Tracks widget makers." in report
     assert "TOP holdings" in report and "understated" in report
     assert "whole fund" in report
     assert "dilutes the stock-level signal" in report

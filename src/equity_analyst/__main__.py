@@ -590,7 +590,7 @@ def _cmd_etf_strategy(args: argparse.Namespace) -> int:
 
     from equity_analyst.config import get_settings
     from equity_analyst.data.yahoo import YahooDataSource
-    from equity_analyst.etf_exposure import DEFAULT_ETF_UNIVERSE, fetch_holdings
+    from equity_analyst.etf_exposure import DEFAULT_ETF_UNIVERSE, fetch_holdings, fetch_profiles
     from equity_analyst.etf_strategy import (
         basket_correlations,
         build_basket,
@@ -634,6 +634,12 @@ def _cmd_etf_strategy(args: argparse.Namespace) -> int:
         delay=args.delay,
         progress=_progress(args),
     )
+    descriptions = fetch_profiles(
+        [p.etf for p in picks],
+        data_source=data_source,
+        delay=args.delay,
+        progress=_progress(args),
+    )
     as_of = date.today().isoformat()
     report = build_strategy_report(
         picks,
@@ -643,6 +649,7 @@ def _cmd_etf_strategy(args: argparse.Namespace) -> int:
         correlations=basket_correlations(stats),
         swept=len(holdings),
         as_of=as_of,
+        descriptions=descriptions,
     )
     print(report)
     if not args.no_save:
@@ -697,21 +704,30 @@ def _cmd_digest(args: argparse.Namespace) -> int:
             build_exposure,
             build_exposure_report,
             fetch_holdings,
+            fetch_profiles,
         )
 
         tickers = [e["packet"]["ticker"] for e in entries]
+        data_source = YahooDataSource()
         holdings, failures = fetch_holdings(
             list(dict.fromkeys(DEFAULT_ETF_UNIVERSE)),
-            data_source=YahooDataSource(),
+            data_source=data_source,
             delay=args.delay,
             progress=_progress(args),
         )
+        exposures = build_exposure(tickers, holdings)
         etf_section = build_exposure_report(
-            build_exposure(tickers, holdings),
+            exposures,
             tickers=tickers,
             top=10,
             failures=failures,
             as_of=date.today().isoformat(),
+            descriptions=fetch_profiles(
+                [e.etf for e in exposures[:10]],
+                data_source=data_source,
+                delay=args.delay,
+                progress=_progress(args),
+            ),
         )
 
     as_of = date.today().isoformat()

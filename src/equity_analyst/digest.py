@@ -79,13 +79,28 @@ def build_qualify_report(quals: list[Qualification], *, need: int) -> str:
 # ---------------------------------------------------------------- digest
 
 
-_BOTTOM_LINE = re.compile(r"####\s*Bottom Line\s*\n(.*?)(?=\n####|\Z)", re.DOTALL)
+def extract_section(writeup: str, heading: str) -> str | None:
+    """The body of one '#### <heading>' section of a seat's writeup, if present."""
+    pattern = re.compile(rf"####\s*{re.escape(heading)}\s*\n(.*?)(?=\n####|\Z)", re.DOTALL)
+    match = pattern.search(writeup or "")
+    return match.group(1).strip() if match else None
 
 
 def extract_bottom_line(writeup: str) -> str | None:
     """The '#### Bottom Line' section of a seat's writeup, if present."""
-    match = _BOTTOM_LINE.search(writeup or "")
-    return match.group(1).strip() if match else None
+    return extract_section(writeup, "Bottom Line")
+
+
+def first_sentences(text: str, n: int = 2, max_chars: int = 450) -> str:
+    """The first ``n`` sentences of a text, hard-capped at ``max_chars``."""
+    flat = " ".join((text or "").split())
+    parts = flat.split(". ")
+    out = ". ".join(parts[:n])
+    if len(parts) > n and not out.endswith("."):
+        out += "."
+    if len(out) > max_chars:
+        out = out[: max_chars - 1].rsplit(" ", 1)[0] + "…"
+    return out
 
 
 def _fmt_cap(value) -> str:
@@ -127,6 +142,16 @@ def _ticker_section(
         ),
         "",
     ]
+
+    # What the company is and how it makes money — from the Fundamental seat's
+    # own Business & Moat analysis (grounded), else the provider's summary.
+    fundamental_seat = next((v for v in verdicts if v.analyst == "Fundamental"), None)
+    described = (
+        extract_section(fundamental_seat.writeup, "Business & Moat") if (fundamental_seat) else None
+    )
+    described = described or fundamentals.get("longBusinessSummary")
+    if described:
+        lines += [f"**What it does:** {first_sentences(described, n=3)}", ""]
 
     if pm is not None:
         lines += ["### Portfolio Manager synthesis", "", pm.synthesis, ""]

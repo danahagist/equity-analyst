@@ -94,6 +94,26 @@ def fetch_holdings(
     return holdings, failures
 
 
+def fetch_profiles(
+    etfs: list[str], *, data_source: MarketDataSource, delay: float = 0.3, progress=None
+) -> dict[str, str]:
+    """Pull each fund's own description; missing profiles are skipped, not fatal."""
+    from equity_analyst.data.yahoo import DataUnavailable
+
+    profiles: dict[str, str] = {}
+    for i, raw in enumerate(etfs):
+        etf = raw.upper()
+        if progress and (i % 10 == 0 or i == len(etfs) - 1):
+            progress(f"profile {i + 1}/{len(etfs)} ({etf})")
+        try:
+            profiles[etf] = data_source.get_fund_profile(etf)
+        except DataUnavailable:
+            continue
+        if delay:
+            time.sleep(delay)
+    return profiles
+
+
 def build_exposure_report(
     exposures: list[ETFExposure],
     *,
@@ -101,6 +121,7 @@ def build_exposure_report(
     top: int,
     failures: list[tuple[str, str]],
     as_of: str,
+    descriptions: dict[str, str] | None = None,
 ) -> str:
     lines = [
         f"# ETF exposure to your candidates ({as_of})",
@@ -119,12 +140,18 @@ def build_exposure_report(
     for i, e in enumerate(exposures[:top], start=1):
         parts = sorted(e.matched.items(), key=lambda kv: kv[1], reverse=True)
         breakdown = ", ".join(f"{sym} {w:.1%}" for sym, w in parts)
-        lines.append(
-            f"| {i} | {e.etf} | {e.n_matched} | {e.total_weight:.1%} | {breakdown} |"
-        )
+        lines.append(f"| {i} | {e.etf} | {e.n_matched} | {e.total_weight:.1%} | {breakdown} |")
     lines += [
         "",
         "Combined weight = summed top-holding weight of your candidates within each "
         "ETF (higher = more concentrated in your names).",
     ]
+    if descriptions:
+        from equity_analyst.digest import first_sentences
+
+        lines += ["", "What each fund is:", ""]
+        for e in exposures[:top]:
+            desc = descriptions.get(e.etf)
+            if desc:
+                lines.append(f"- **{e.etf}** — {first_sentences(desc, n=2)}")
     return "\n".join(lines)

@@ -70,6 +70,26 @@ class YahooDataSource:
                 holdings[str(symbol).upper()] = float(weight)
         return holdings
 
+    def get_fund_profile(self, etf: str) -> str:
+        """Return the fund's own description text (what it tracks / holds).
+
+        Tries the funds-data description first, then the general business
+        summary. Raises DataUnavailable when neither exists.
+        """
+        description = None
+        try:
+            description = self._ticker(etf).funds_data.description
+        except Exception:  # noqa: BLE001 - fall through to the info summary
+            pass
+        if not description:
+            try:
+                description = self._ticker(etf).info.get("longBusinessSummary")
+            except Exception as exc:  # noqa: BLE001
+                raise DataUnavailable(f"could not fetch profile for {etf!r}: {exc}") from exc
+        if not description:
+            raise DataUnavailable(f"no fund description available for {etf!r}")
+        return str(description)
+
 
 def normalize_prices(raw: pd.DataFrame) -> pd.DataFrame:
     """Coerce a ``yfinance`` history frame into the canonical tidy price frame."""
