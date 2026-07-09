@@ -206,6 +206,19 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
   full ranking CSV lands in `outputs/`. Committee-scale usage stays bounded:
   screen 1000 names cheaply, run the committee on the top ~20.
 
+- [x] Weekly pipeline (Dana's 4-phase funnel; [[weekly-pipeline]] skill is the
+  single entry point, each phase also standalone):
+  1. `screen` Russell 1000 → top 50 by blended score.
+  2. `prep` the committee set (forecasts).
+  3. committee on the top 10 (**selected by blended score, never by forecast
+     "upside"** — the engine has no skill vs drift at most horizons; forecast is
+     risk framing only).
+  4. `levels` — entry/exit buy/trim/target/stop from the forecast's 80%
+     intervals, **decision support only, never orders/auto-execution**.
+  5. `notify` — email the package (stdlib SMTP; `SMTP_*` in `.env`).
+  Dana fires it himself (committee needs Claude Code as the LLM); it is not a
+  hands-off cron. Guardrail: research assistance, not advice — no auto-trading.
+
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output
   is the remaining unknown; synthetic fixtures can't validate prompt quality.

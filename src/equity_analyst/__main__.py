@@ -24,6 +24,8 @@ _COMMANDS = (
     "finalize",
     "submit-verdict",
     "screen",
+    "levels",
+    "notify",
     "compare",
     "skill-report",
     "export",
@@ -126,6 +128,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_screen.add_argument("--quiet", action="store_true", help="Suppress progress messages")
 
+    p_levels = sub.add_parser(
+        "levels",
+        help="Phase 4: forecast-interval entry/exit levels (decision support, no orders)",
+    )
+    p_levels.add_argument(
+        "tickers", nargs="+", metavar="ticker", help="Ticker(s) with a prepared packet"
+    )
+    p_levels.add_argument("--as-of", help="Session date (defaults to the latest packet)")
+
+    p_notify = sub.add_parser(
+        "notify", help="Email a report (stdlib SMTP; configure SMTP_* in .env)"
+    )
+    p_notify.add_argument("--subject", required=True, help="Email subject")
+    p_notify.add_argument("--body-file", help="Path to a text/markdown body (else a stub)")
+    p_notify.add_argument(
+        "--attach", action="append", default=[], metavar="PATH", help="File to attach (repeatable)"
+    )
+
     p_compare = sub.add_parser(
         "compare", help="Rank the latest stored run per ticker side by side"
     )
@@ -155,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         "finalize": _cmd_finalize,
         "submit-verdict": _cmd_submit_verdict,
         "screen": _cmd_screen,
+        "levels": _cmd_levels,
+        "notify": _cmd_notify,
         "compare": _cmd_compare,
         "skill-report": _cmd_skill_report,
         "export": _cmd_export,
@@ -399,6 +421,58 @@ def _cmd_screen(args: argparse.Namespace) -> int:
     if ranked:
         csv_path = write_screen_csv(ranked, settings.outputs_dir / f"screen-{as_of}.csv")
         print(f"\n[full ranking saved to {csv_path}]")
+    return 0
+
+
+def _cmd_levels(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.levels import build_levels_report, plan_from_packet
+    from equity_analyst.session import load_packet
+
+    settings = get_settings()
+    plans = []
+    for ticker in args.tickers:
+        try:
+            packet = load_packet(settings.runs_dir, ticker, args.as_of)
+            plans.append(plan_from_packet(packet))
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}")
+    if not plans:
+        return 1
+    print(build_levels_report(plans, as_of=date.today().isoformat()))
+    return 0
+
+
+def _cmd_notify(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.notify import EmailNotConfigured, send_email
+
+    settings = get_settings()
+    attachments = [Path(p) for p in args.attach]
+    missing = [str(p) for p in attachments if not p.exists()]
+    if missing:
+        print(f"error: attachment(s) not found: {', '.join(missing)}")
+        return 1
+    body = (
+        Path(args.body_file).read_text(encoding="utf-8")
+        if args.body_file
+        else "Equity-analyst run complete. See attached report(s)."
+    )
+    try:
+        send_email(
+            settings.smtp, subject=args.subject, body=body, attachments=attachments
+        )
+    except EmailNotConfigured as exc:
+        print(f"error: {exc}")
+        return 2
+    except OSError as exc:
+        print(f"error: email send failed — {exc}")
+        return 1
+    print(f"emailed '{args.subject}' to {', '.join(settings.smtp.recipients)}")
     return 0
 
 

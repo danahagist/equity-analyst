@@ -37,12 +37,29 @@ def load_dotenv(path: Path | None = None) -> None:
 
 
 @dataclass(frozen=True)
+class SMTPConfig:
+    """SMTP settings for the end-of-run email (all from env / .env)."""
+
+    host: str
+    port: int
+    username: str
+    password: str
+    sender: str
+    recipients: tuple[str, ...]
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host and self.username and self.password and self.recipients)
+
+
+@dataclass(frozen=True)
 class Settings:
     """Resolved settings for a run."""
 
     data_dir: Path = DEFAULT_DATA_DIR
     outputs_dir: Path = DEFAULT_OUTPUTS_DIR
     anthropic_api_key: str | None = None
+    smtp: SMTPConfig | None = None
 
     @property
     def db_path(self) -> Path:
@@ -65,8 +82,20 @@ def get_settings(*, load_env: bool = True) -> Settings:
         load_dotenv()
     data_dir = Path(os.environ.get("EQUITY_ANALYST_DATA_DIR", DEFAULT_DATA_DIR))
     outputs_dir = Path(os.environ.get("EQUITY_ANALYST_OUTPUTS_DIR", DEFAULT_OUTPUTS_DIR))
+    recipients = tuple(
+        r.strip() for r in os.environ.get("SMTP_TO", "").split(",") if r.strip()
+    )
+    smtp = SMTPConfig(
+        host=os.environ.get("SMTP_HOST", ""),
+        port=int(os.environ.get("SMTP_PORT", "587")),
+        username=os.environ.get("SMTP_USER", ""),
+        password=os.environ.get("SMTP_PASSWORD", ""),
+        sender=os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", "")),
+        recipients=recipients,
+    )
     return Settings(
         data_dir=data_dir,
         outputs_dir=outputs_dir,
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        smtp=smtp,
     )
