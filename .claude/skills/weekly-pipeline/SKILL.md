@@ -47,9 +47,11 @@ equity-analyst rank --screen-csv outputs/screen-<date>.csv --top 50
 ```
 
 Orders the queue by blended score and applies the **skill-gated veto**: a name
-is demoted (to the bottom, reason shown — never hidden) only when a horizon
-whose model beat the naive baseline shows a negative expected return, or when
-reward:risk is poor at a skill-flagged 1y target. No-skill forecasts can
+is demoted (to the bottom, reason shown — never hidden) only when a 1m/1y
+horizon whose model beat the naive baseline shows a *materially negative*
+expected return (beyond the ±1% flat band). Skilled-flat forecasts annotate
+("no forecast support") but never demote — at 1y the drift-beating models are
+frequently flat-forecasters, and flat is not bearish. No-skill forecasts can
 neither promote nor demote.
 
 ## Phase 4 — committee walk-down until 5 qualify

@@ -214,8 +214,11 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
   3. `rank` — walk-down queue ordered by **blended score only**. The forecast
      never promotes a name (no skill vs drift at most horizons; drift "upside"
      also triple-counts the Street-gap echo) but can **demote via a
-     skill-gated veto**: a horizon whose model beat the naive baseline showing
-     negative expected return, or poor R:R at a skill-flagged 1y target.
+     skill-gated veto**: a 1m/1y horizon whose model beat the naive baseline
+     showing a *materially negative* expected return (beyond a ±1% flat band).
+     Skilled-flat annotates but never demotes — 1y drift-beating models are
+     frequently flat-forecasters and flat is not bearish (the first live run's
+     flat-catching R:R rule demoted 18 of 32 names; softened 2026-07-08).
      Demotions sink to the bottom with reasons shown, never hidden. Promote
      the forecast into the score only if `skill-report` (~30+ matured
      forecasts/horizon) ever shows real skill.

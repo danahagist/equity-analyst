@@ -229,7 +229,10 @@ def build_digest(
         lines += _ticker_section(packet, verdicts, pm, consensus, plan)
 
     if etf_section:
-        lines += ["## Broader exposure via ETFs", "", etf_section.strip(), ""]
+        # The standalone exposure report opens with an H1; demote headings so
+        # the embedded copy nests under this H2 instead of fighting the digest.
+        embedded = re.sub(r"(?m)^#(?=#*\s)", "###", etf_section.strip())
+        lines += ["## Broader exposure via ETFs", "", embedded, ""]
 
     lines += [
         "## Methodology",

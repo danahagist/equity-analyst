@@ -8,12 +8,16 @@ mixing drift extrapolation into the ranking would triple-count the same
 already carries.
 
 The forecast gets exactly one vote, and only where it has earned it: a
-**skill-gated veto**. A name is *demoted* (never deleted) when a horizon whose
-model actually beat the naive baseline in backtest shows a negative expected
-return, or when the calibrated risk/reward is poor at a skill-flagged target
-horizon. Demoted names sink below every clean name in the walk-down queue with
-the reason logged — visible, not hidden. No-skill horizons can neither promote
-nor demote: they are noise in both directions.
+**skill-gated veto**. A name is *demoted* (never deleted) when a 1m/1y horizon
+whose model actually beat the naive baseline in backtest shows a *materially
+negative* expected return (beyond the flat band). Skilled-flat forecasts only
+annotate: at the 1y horizon the models that beat drift are frequently
+flat-forecasters (they win on error by predicting nothing), and "validated
+signal ≈ flat" is not a bearish statement — the first live run showed a
+flat-catching rule demoting over half the universe. Demoted names sink below
+every clean name in the walk-down queue with the reason logged — visible, not
+hidden. No-skill horizons can neither promote nor demote: they are noise in
+both directions.
 
 This is a soft veto by design: a skilled point signal is still a weak signal —
 strong enough not to spend committee budget on the name first, not strong
@@ -26,8 +30,6 @@ import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from equity_analyst.levels import plan_from_packet
-
 # Horizons the veto pass looks at. 1d is excluded entirely: a skilled one-day
 # signal is irrelevant to the multi-week/month holding periods the pipeline
 # serves. 1w signals are annotated but cannot demote for the same reason —
@@ -35,8 +37,9 @@ from equity_analyst.levels import plan_from_packet
 VETO_HORIZONS = ("1w", "1m", "1y")
 NEGATIVE_VETO_HORIZONS = ("1m", "1y")
 
-# Reward:risk below this at a *skill-flagged* target horizon demotes.
-MIN_REWARD_RISK = 1.0
+# A skilled expected return must be below -FLAT_BAND to demote; within the band
+# it is flat, and flat annotates rather than vetoes.
+FLAT_BAND = 0.01
 
 
 @dataclass
@@ -63,30 +66,22 @@ def apply_veto(candidate: RankedCandidate, packet: dict) -> RankedCandidate:
 
     for label, row in sorted(skilled.items()):
         expected = (float(row["point"]) - last_price) / last_price
-        if expected <= 0 and label in NEGATIVE_VETO_HORIZONS:
+        if expected < -FLAT_BAND and label in NEGATIVE_VETO_HORIZONS:
             candidate.vetoed = True
             candidate.veto_reasons.append(
                 f"skilled {label} model ({row.get('model', '?')}) shows "
-                f"{expected:+.1%} expected return — the one validated signal is not positive"
+                f"{expected:+.1%} expected return — the validated signal is negative"
             )
-        else:
-            tone = "supportive" if expected > 0 else "cautionary; 1w cannot demote"
-            candidate.notes.append(f"skilled {label} signal: {expected:+.1%} ({tone})")
-
-    # Risk/reward veto, gated on the 1y target horizon having beaten the
-    # baseline — an R:R computed from a drift-only point is not evidence, and
-    # an R:R against a near-term fallback target is not the holding thesis.
-    try:
-        plan = plan_from_packet(packet)
-    except ValueError:
-        plan = None
-    if plan is not None and plan.target_label == "1y" and plan.target_beats_drift:
-        rr = plan.reward_risk
-        if rr is not None and rr < MIN_REWARD_RISK and not candidate.vetoed:
-            candidate.vetoed = True
-            candidate.veto_reasons.append(
-                f"reward:risk {rr:.1f} < {MIN_REWARD_RISK:.1f} at the skill-flagged "
-                f"{plan.target_label} target horizon"
+        elif expected > FLAT_BAND:
+            candidate.notes.append(f"skilled {label} signal: {expected:+.1%} (supportive)")
+        elif abs(expected) <= FLAT_BAND:
+            candidate.notes.append(
+                f"skilled {label} signal ≈ flat ({expected:+.1%}) — no forecast "
+                "support, but flat is not bearish; no veto"
+            )
+        else:  # negative beyond the band at a horizon that cannot demote (1w)
+            candidate.notes.append(
+                f"skilled {label} signal: {expected:+.1%} (cautionary; 1w cannot demote)"
             )
 
     return candidate
@@ -136,10 +131,11 @@ def build_rank_report(queue: list[RankedCandidate], *, as_of: str) -> str:
         f"# Committee walk-down queue ({as_of})",
         "",
         "_Ordered by the blended screen score. The forecast never promotes a name; "
-        "it can only demote via a **skill-gated veto** (a horizon that beat the naive "
-        "baseline in backtest showing a negative expected return, or poor reward:risk "
-        "at a skill-flagged target). Demoted names sink to the bottom with the reason "
-        "shown — they are not hidden. Not financial advice._",
+        "it can only demote via a **skill-gated veto**: a 1m/1y horizon that beat the "
+        "naive baseline in backtest showing a materially negative expected return "
+        "(beyond the ±1% flat band — skilled-flat annotates, it does not veto). "
+        "Demoted names sink to the bottom with the reason shown — they are not "
+        "hidden. Not financial advice._",
         "",
         "| # | Ticker | Blended | Veto | Notes |",
         "|---|--------|---------|------|-------|",

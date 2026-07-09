@@ -69,21 +69,35 @@ def test_skilled_positive_signal_annotates_but_never_promotes() -> None:
 
 
 def test_skilled_negative_1w_annotates_but_cannot_demote() -> None:
-    # APP-shaped: a skilled one-week blip is too short for the holding thesis.
+    # A skilled one-week dip beyond the flat band is too short for the holding thesis.
     cand = apply_veto(
         RankedCandidate("APP", 0.7),
-        _packet([_row("1w", 99.5, 92, 107, beats=True)]),
+        _packet([_row("1w", 98.0, 91, 105, beats=True)]),
     )
     assert not cand.vetoed
     assert any("cautionary" in n and "1w" in n for n in cand.notes)
 
 
-def test_poor_reward_risk_demotes_only_when_target_is_skilled() -> None:
-    # Same numbers, different skill flag on the 1y target: only the skilled one demotes.
-    rows_skilled = [_row("1m", 101, 90, 112, beats=True), _row("1y", 104, 60, 148, beats=True)]
-    rows_drift = [_row("1m", 101, 90, 112, beats=True), _row("1y", 104, 60, 148, beats=False)]
-    assert apply_veto(RankedCandidate("A", 0.5), _packet(rows_skilled)).vetoed
-    assert not apply_veto(RankedCandidate("B", 0.5), _packet(rows_drift)).vetoed
+def test_skilled_flat_annotates_but_does_not_demote() -> None:
+    # MSFT/ADSK-shaped: 1y models that beat drift by forecasting ≈ nothing.
+    # Flat is not bearish — it must not veto (the first live run's flat-catcher
+    # demoted over half the universe).
+    for point in (100.0, 99.7, 100.9):  # 0.0%, -0.3%, +0.9% — all inside ±1%
+        cand = apply_veto(
+            RankedCandidate("X", 0.8),
+            _packet([_row("1y", point, 70, 130, beats=True)]),
+        )
+        assert not cand.vetoed, f"flat point {point} must not veto"
+        assert any("flat" in n and "no veto" in n for n in cand.notes)
+
+
+def test_negative_just_beyond_flat_band_demotes() -> None:
+    cand = apply_veto(
+        RankedCandidate("X", 0.8),
+        _packet([_row("1y", 98.7, 70, 128, beats=True)]),  # -1.3%
+    )
+    assert cand.vetoed
+    assert any("validated signal is negative" in r for r in cand.veto_reasons)
 
 
 def test_1d_horizon_is_ignored_by_the_veto() -> None:
