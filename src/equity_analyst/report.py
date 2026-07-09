@@ -109,11 +109,7 @@ def _forecast_table(forecast_rows: list[dict], last_price: float | None) -> list
         "----------------|---------|",
     ]
     for r in forecast_rows:
-        exp = (
-            f"{(r['point'] / last_price - 1):+.1%}"
-            if last_price
-            else "—"
-        )
+        exp = f"{(r['point'] / last_price - 1):+.1%}" if last_price else "—"
         skill = "beats drift" if r["beats_baseline"] else "drift-only ⚠️"
         out.append(
             f"| {r['label']} | {r['target_date']} | ${r['point']:,.2f} "
@@ -172,9 +168,7 @@ def build_report(
     if consensus.dissenters:
         out.append(f"- Dissenting: {', '.join(consensus.dissenters)}")
     if failures:
-        out.append(
-            f"- ⚠️ Excluded (errored): {', '.join(name for name, _ in failures)}"
-        )
+        out.append(f"- ⚠️ Excluded (errored): {', '.join(name for name, _ in failures)}")
 
     # --- 4. Portfolio Manager ----------------------------------------------------
     out += [

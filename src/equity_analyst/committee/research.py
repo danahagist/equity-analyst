@@ -18,6 +18,12 @@ target changes, notable research notes with their dates), assess:
 - How current price compares to the mean/median price target (implied upside/downside).
 - Recent rating momentum and any contrarian or standout third-party views.
 
+Source discipline: run at most 3-4 targeted web searches, and cite ONLY these free \
+aggregators (plus the consensus data already provided): stockanalysis.com, MarketBeat, \
+TipRanks, and Benzinga. Prefer queries scoped to them (e.g. "TICKER price target \
+site:marketbeat.com"). If results surface other domains, do not cite them — \
+corroborate via the pinned sources or note the gap honestly.
+
 Cite sources and dates in your evidence, and note when data is stale or thin. Weigh \
 the third-party picture — do not simply echo the consensus if the evidence warrants \
 skepticism. Then commit to a rated verdict on the −2…+2 scale (−2 Strong Sell … +2 \

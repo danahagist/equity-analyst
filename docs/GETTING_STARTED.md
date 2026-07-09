@@ -133,6 +133,12 @@ as decoration around the interval.
 The repo ships skills, so plain requests work:
 
 - *"Run the committee on NVDA"* → the full staged flow above.
+- *"Run the weekly pipeline"* → the whole funnel: screen the Russell 1000,
+  forecast the top 50, order a walk-down queue (blended score; the forecast
+  can only demote via a skill-gated veto), run the committee one name at a
+  time until 5 qualify (PM Buy+, medium+ conviction, committee not split),
+  then render one combined digest — every analyst's bottom line, levels, an
+  ETF-strategy section, and an executive summary.
 - *"Check whether the forecaster has skill yet"* → `equity-analyst skill-report`.
 - *"Compare my tickers"* → `equity-analyst compare` (+ the full reports in
   `outputs/` for the detail).

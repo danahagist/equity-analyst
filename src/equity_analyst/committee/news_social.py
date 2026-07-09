@@ -19,6 +19,12 @@ this reflects news and public pages, NOT a real-time social-media firehose.
 - Upcoming catalysts: next earnings date, product launches, industry events, macro \
 events on the calendar.
 
+Search discipline: run at most 4 web searches. Prefer these primary sources: Yahoo \
+Finance, Reuters, CNBC, and the company's own investor-relations/press pages. You may \
+follow a catalyst-specific lead elsewhere (a short report, regulatory filing, or \
+earnings-date tracker) when the primary sources surface it, but stay within the search \
+budget.
+
 Cite what you found (source and rough date) in your evidence. Distinguish confirmed \
 facts from speculation. Then commit to a rated verdict on the −2…+2 scale (−2 Strong \
 Sell … +2 Strong Buy) reflecting how the news/catalyst picture bears on the stock, \

@@ -82,12 +82,16 @@ def get_settings(*, load_env: bool = True) -> Settings:
         load_dotenv()
     data_dir = Path(os.environ.get("EQUITY_ANALYST_DATA_DIR", DEFAULT_DATA_DIR))
     outputs_dir = Path(os.environ.get("EQUITY_ANALYST_OUTPUTS_DIR", DEFAULT_OUTPUTS_DIR))
-    recipients = tuple(
-        r.strip() for r in os.environ.get("SMTP_TO", "").split(",") if r.strip()
-    )
+    recipients = tuple(r.strip() for r in os.environ.get("SMTP_TO", "").split(",") if r.strip())
+    # A malformed SMTP_PORT must not brick every command — get_settings runs for
+    # prep/screen too. Fall back to 587 and let `notify` surface config issues.
+    try:
+        smtp_port = int(os.environ.get("SMTP_PORT") or "587")
+    except ValueError:
+        smtp_port = 587
     smtp = SMTPConfig(
         host=os.environ.get("SMTP_HOST", ""),
-        port=int(os.environ.get("SMTP_PORT", "587")),
+        port=smtp_port,
         username=os.environ.get("SMTP_USER", ""),
         password=os.environ.get("SMTP_PASSWORD", ""),
         sender=os.environ.get("SMTP_FROM", os.environ.get("SMTP_USER", "")),

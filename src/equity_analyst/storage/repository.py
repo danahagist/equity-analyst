@@ -46,8 +46,7 @@ def upsert_prices(conn: sqlite3.Connection, ticker: str, prices: pd.DataFrame) -
 def load_prices(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
     """Return stored bars for ``ticker`` as the canonical tidy frame (may be empty)."""
     cur = conn.execute(
-        "SELECT date, open, high, low, close, volume "
-        "FROM price_bar WHERE ticker = ? ORDER BY date",
+        "SELECT date, open, high, low, close, volume FROM price_bar WHERE ticker = ? ORDER BY date",
         (ticker,),
     )
     frame = pd.DataFrame(cur.fetchall(), columns=["date", *PRICE_COLUMNS[1:]])
@@ -92,8 +91,16 @@ def save_run(
         "INSERT OR REPLACE INTO committee_run (ticker, as_of, created_at, pm_rating, "
         "pm_conviction, consensus_leaning, blended_score, report_md) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (ticker, as_of, created_at, pm_rating, pm_conviction, consensus_leaning,
-         float(blended_score), report_md),
+        (
+            ticker,
+            as_of,
+            created_at,
+            pm_rating,
+            pm_conviction,
+            consensus_leaning,
+            float(blended_score),
+            report_md,
+        ),
     )
     conn.commit()
 
@@ -105,14 +112,74 @@ def save_forecast_rows(conn: sqlite3.Connection, ticker: str, as_of: str, rows: 
         "point, lower, upper, interval_level, beats_baseline, n_windows) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (ticker, as_of, r["label"], r["target_date"], r["model"], r["point"],
-             r["lower"], r["upper"], r["interval_level"], int(r["beats_baseline"]),
-             r["n_windows"])
+            (
+                ticker,
+                as_of,
+                r["label"],
+                r["target_date"],
+                r["model"],
+                r["point"],
+                r["lower"],
+                r["upper"],
+                r["interval_level"],
+                int(r["beats_baseline"]),
+                r["n_windows"],
+            )
             for r in rows
         ],
     )
     conn.commit()
     return len(rows)
+
+
+def save_screen_results(conn: sqlite3.Connection, *, as_of: str, ranked: list) -> int:
+    """Store a screen's full ranked universe (``ScreenRow`` objects), replacing
+    any earlier screen persisted for the same date."""
+    conn.execute("DELETE FROM screen_result WHERE as_of = ?", (as_of,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO screen_result (ticker, as_of, rank, blended, "
+        "street_score, garp_score, target_upside, price, name, sector) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                row.ticker,
+                as_of,
+                i,
+                _f(row.blended),
+                _f(row.street_score),
+                _f(row.garp_score),
+                _f(row.factors.get("target_upside")),
+                _f(row.price),
+                row.name,
+                row.sector,
+            )
+            for i, row in enumerate(ranked, start=1)
+        ],
+    )
+    conn.commit()
+    return len(ranked)
+
+
+def load_screen_results(
+    conn: sqlite3.Connection, *, as_of: str | None = None, top: int | None = None
+) -> tuple[str | None, list[tuple[str, float | None]]]:
+    """Return ``(screen_date, [(ticker, blended), ...])`` in rank order.
+
+    Uses the latest stored screen when ``as_of`` is omitted; returns
+    ``(None, [])`` when nothing is stored.
+    """
+    if as_of is None:
+        row = conn.execute("SELECT MAX(as_of) AS latest FROM screen_result").fetchone()
+        as_of = row["latest"] if row else None
+    if as_of is None:
+        return None, []
+    query = "SELECT ticker, blended FROM screen_result WHERE as_of = ? ORDER BY rank"
+    params: tuple = (as_of,)
+    if top is not None:
+        query += " LIMIT ?"
+        params = (as_of, top)
+    rows = conn.execute(query, params).fetchall()
+    return as_of, [(r["ticker"], r["blended"]) for r in rows]
 
 
 def _f(value: object) -> float | None:

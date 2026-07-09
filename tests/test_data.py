@@ -44,3 +44,46 @@ def test_normalize_prices_maps_yfinance_columns() -> None:
     assert list(out.columns) == PRICE_COLUMNS
     assert out["date"].dt.tz is None  # tz stripped
     assert out["close"].tolist() == [1.5, 2.5]
+
+
+def test_fetch_many_collects_failures_and_preserves_order() -> None:
+    from equity_analyst.data.base import DataUnavailable, fetch_many
+
+    def fetch(key: str) -> str:
+        if key == "BAD":
+            raise DataUnavailable("nothing usable")
+        return f"ok-{key}"
+
+    results, failures = fetch_many(["aaa", "BAD", "bbb"], fetch, delay=0)
+    assert list(results) == ["AAA", "BBB"]  # uppercased, input order, BAD skipped
+    assert results["AAA"] == "ok-AAA"
+    assert failures == [("BAD", "nothing usable")]
+
+
+def test_fetch_many_retries_rate_limits_but_not_other_errors() -> None:
+    from equity_analyst.data.base import DataUnavailable, fetch_many
+
+    calls: dict[str, int] = {"LIMITED": 0, "GONE": 0}
+
+    def fetch(key: str) -> str:
+        calls[key] += 1
+        if key == "LIMITED" and calls[key] == 1:
+            raise DataUnavailable("HTTP 429 Too Many Requests")
+        if key == "GONE":
+            raise DataUnavailable("no data returned")
+        return "ok"
+
+    results, failures = fetch_many(["LIMITED", "GONE"], fetch, delay=0, backoff=0)
+    assert results == {"LIMITED": "ok"}
+    assert calls["LIMITED"] == 2  # one retry after the 429
+    assert calls["GONE"] == 1  # non-rate-limit errors fail fast
+    assert failures == [("GONE", "no data returned")]
+
+
+def test_data_unavailable_importable_from_both_modules() -> None:
+    # The exception moved to the interface module; the yahoo re-export must
+    # keep every existing `from ...yahoo import DataUnavailable` working.
+    from equity_analyst.data.base import DataUnavailable as from_base
+    from equity_analyst.data.yahoo import DataUnavailable as from_yahoo
+
+    assert from_base is from_yahoo

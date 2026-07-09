@@ -14,10 +14,9 @@ under-counting small tail positions. The report says so; not financial advice.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 
-from equity_analyst.data.base import MarketDataSource
+from equity_analyst.data.base import MarketDataSource, fetch_many
 
 # Curated universe: broad, sector (SPDR), and thematic funds spanning the
 # sectors the screen/committee tend to reach (semis, software, energy, gold
@@ -76,22 +75,19 @@ def fetch_holdings(
     etfs: list[str], *, data_source: MarketDataSource, delay: float = 0.3, progress=None
 ) -> tuple[dict[str, dict[str, float]], list[tuple[str, str]]]:
     """Pull holdings for each ETF; collect failures rather than aborting."""
-    from equity_analyst.data.yahoo import DataUnavailable
+    return fetch_many(
+        etfs, data_source.get_etf_holdings, delay=delay, progress=progress, label="holdings"
+    )
 
-    holdings: dict[str, dict[str, float]] = {}
-    failures: list[tuple[str, str]] = []
-    for i, raw in enumerate(etfs):
-        etf = raw.upper()
-        if progress and (i % 10 == 0 or i == len(etfs) - 1):
-            progress(f"holdings {i + 1}/{len(etfs)} ({etf})")
-        try:
-            holdings[etf] = data_source.get_etf_holdings(etf)
-        except DataUnavailable as exc:
-            failures.append((etf, str(exc)))
-            continue
-        if delay:
-            time.sleep(delay)
-    return holdings, failures
+
+def fetch_profiles(
+    etfs: list[str], *, data_source: MarketDataSource, delay: float = 0.3, progress=None
+) -> dict[str, str]:
+    """Pull each fund's own description; missing profiles are skipped, not fatal."""
+    profiles, _failures = fetch_many(
+        etfs, data_source.get_fund_profile, delay=delay, progress=progress, label="profile"
+    )
+    return profiles
 
 
 def build_exposure_report(
@@ -101,7 +97,13 @@ def build_exposure_report(
     top: int,
     failures: list[tuple[str, str]],
     as_of: str,
+    swept: int | None = None,
+    descriptions: dict[str, str] | None = None,
 ) -> str:
+    # `swept` is the true universe size (fetched OK + failures). Deriving it
+    # from len(exposures) undercounts: funds that fetched fine but hold zero
+    # candidates would vanish from the denominator, misstating the search.
+    swept = swept if swept is not None else len(exposures) + len(failures)
     lines = [
         f"# ETF exposure to your candidates ({as_of})",
         "",
@@ -110,8 +112,8 @@ def build_exposure_report(
         "meaningful position and under-counts small tail weights. A broader-"
         "exposure aid, not financial advice._".format(names=", ".join(t.upper() for t in tickers)),
         "",
-        f"Swept {len(exposures) + len(failures)} ETFs; {len(exposures)} hold at least "
-        f"one candidate ({len(failures)} had no/failed holdings data).",
+        f"Swept {swept} ETFs; {len(exposures)} hold at least one candidate "
+        f"in their top holdings ({len(failures)} fetches failed).",
         "",
         "| # | ETF | Candidates held | Combined weight | Breakdown |",
         "|---|-----|-----------------|-----------------|-----------|",
@@ -119,12 +121,18 @@ def build_exposure_report(
     for i, e in enumerate(exposures[:top], start=1):
         parts = sorted(e.matched.items(), key=lambda kv: kv[1], reverse=True)
         breakdown = ", ".join(f"{sym} {w:.1%}" for sym, w in parts)
-        lines.append(
-            f"| {i} | {e.etf} | {e.n_matched} | {e.total_weight:.1%} | {breakdown} |"
-        )
+        lines.append(f"| {i} | {e.etf} | {e.n_matched} | {e.total_weight:.1%} | {breakdown} |")
     lines += [
         "",
         "Combined weight = summed top-holding weight of your candidates within each "
         "ETF (higher = more concentrated in your names).",
     ]
+    if descriptions:
+        from equity_analyst.digest import first_sentences
+
+        lines += ["", "What each fund is:", ""]
+        for e in exposures[:top]:
+            desc = descriptions.get(e.etf)
+            if desc:
+                lines.append(f"- **{e.etf}** — {first_sentences(desc, n=2)}")
     return "\n".join(lines)
