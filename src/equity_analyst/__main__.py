@@ -127,6 +127,9 @@ def main(argv: list[str] | None = None) -> int:
     p_screen.add_argument(
         "--delay", type=float, default=0.3, help="Seconds between fetches (default: 0.3)"
     )
+    p_screen.add_argument(
+        "--no-db", action="store_true", help="Do not record the ranking in SQLite"
+    )
     p_screen.add_argument("--quiet", action="store_true", help="Suppress progress messages")
 
     p_rank = sub.add_parser(
@@ -512,8 +515,20 @@ def _cmd_screen(args: argparse.Namespace) -> int:
         build_screen_report(ranked, top=args.top, excluded=excluded, failures=failures, as_of=as_of)
     )
     if ranked:
+        # SQLite is the system of record (rank/etf-strategy read it back, and
+        # the funnel stays joinable against forecasts and committee runs);
+        # the CSV is the export layer.
+        if not args.no_db:
+            from equity_analyst.storage import connect, save_screen_results
+
+            conn = connect(settings.db_path)
+            try:
+                save_screen_results(conn, as_of=as_of, ranked=ranked)
+            finally:
+                conn.close()
+            print(f"\n[{len(ranked)} ranked names recorded in {settings.db_path}]")
         csv_path = write_screen_csv(ranked, settings.outputs_dir / f"screen-{as_of}.csv")
-        print(f"\n[full ranking saved to {csv_path}]")
+        print(f"[full ranking exported to {csv_path}]")
     return 0
 
 
@@ -540,30 +555,49 @@ def _cmd_rank(args: argparse.Namespace) -> int:
 
 
 def _screen_candidates(args: argparse.Namespace) -> list[tuple[str, float | None]] | int:
-    """Resolve (ticker, blended) candidates from explicit tickers + --screen-csv.
+    """Resolve (ticker, blended) candidates for `rank` / `etf-strategy`.
 
-    Shared by `rank` and `etf-strategy` so the semantics can't drift: explicit
-    tickers keep their position at the front but inherit their blended score
-    from the CSV when present (an unscored 'extra' name must not silently
-    out-weigh every genuinely screened one). Returns an exit code on failure.
+    Priority: --screen-csv if given, else the latest screen stored in SQLite
+    (the system of record — a plain `equity-analyst rank --top 50` works right
+    after `screen` with no file paths involved). Explicit tickers keep their
+    position at the front but inherit their blended score from the screen when
+    present (an unscored 'extra' name must not silently out-weigh every
+    genuinely screened one). Returns an exit code on failure.
     """
     from pathlib import Path
 
     from equity_analyst.rank import read_screen_csv
 
     candidates: list[tuple[str, float | None]] = [(t.upper(), None) for t in args.tickers]
+    screen_rows: list[tuple[str, float | None]] = []
     if args.screen_csv:
         try:
-            csv_rows = read_screen_csv(Path(args.screen_csv), top=args.top)
+            screen_rows = read_screen_csv(Path(args.screen_csv), top=args.top)
         except (OSError, ValueError, KeyError) as exc:
             print(f"error: cannot read screen CSV {args.screen_csv} — {exc}")
             return 1
-        blended_by_ticker = dict(csv_rows)
+    else:
+        from equity_analyst.config import get_settings
+        from equity_analyst.storage import connect, load_screen_results
+
+        conn = connect(get_settings().db_path)
+        try:
+            screen_date, screen_rows = load_screen_results(conn, top=args.top)
+        finally:
+            conn.close()
+        if screen_rows:
+            print(f"[using the stored {screen_date} screen, top {len(screen_rows)}]")
+
+    if screen_rows:
+        blended_by_ticker = dict(screen_rows)
         explicit = {t for t, _ in candidates}
         candidates = [(t, blended_by_ticker.get(t)) for t, _ in candidates]
-        candidates += [(t, b) for t, b in csv_rows if t not in explicit]
+        candidates += [(t, b) for t, b in screen_rows if t not in explicit]
     if not candidates:
-        print("error: no candidates — pass tickers and/or --screen-csv")
+        print(
+            "error: no candidates — run `equity-analyst screen` first (its ranking "
+            "is stored in SQLite), or pass tickers / --screen-csv"
+        )
         return 2
     return candidates
 

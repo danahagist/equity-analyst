@@ -118,9 +118,12 @@ the template deliberately, in one place, for both modes at once.
   data-access module**. It's unofficial and can break; the isolation makes moving
   to a keyed API (Alpha Vantage / FMP free tier) a one-file change later.
 - **Storage:** **SQLite is the system of record** — related tables for prices,
-  fundamentals, forecasts, sentiment/analyst signals, and recommendations. This
-  is what lets us store forecast-vs-actual and later check whether the forecaster
-  has any real skill. **CSV/Excel are an export layer on top**, not the primary store.
+  fundamentals, forecasts, screen rankings, and recommendations. This is what
+  lets us store forecast-vs-actual and later check whether the forecaster has
+  any real skill, and keeps the weekly funnel joinable end to end (screen →
+  forecast → committee). **CSV/Excel are an export layer on top**, not the
+  primary store — `rank`/`etf-strategy` read the latest screen from SQLite by
+  default (`--screen-csv` remains as an override).
 - **Output:** each run writes `outputs/<TICKER>-<YYYY-MM-DD>.md` (all analyst
   sections + consensus) **and** prints to stdout. `outputs/` is gitignored.
 
@@ -209,7 +212,8 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - [x] Weekly pipeline v2 (Dana's funnel, revised 2026-07-08 after the first
   full top-10 run; [[weekly-pipeline]] skill is the single entry point, each
   phase also standalone):
-  1. `screen` Russell 1000 → top 50 by blended score.
+  1. `screen` Russell 1000 → top 50 by blended score (full ranking recorded
+     in SQLite; CSV exported for reference).
   2. `prep` all 50 (forecasts, no LLM) — feeds the veto pass. (The veto reads
      skill-flagged point signals only; interval/downside risk surfaces in the
      digest's levels rows, not in queue position.)

@@ -21,6 +21,7 @@ _TABLES: dict[str, tuple[str, str]] = {
     "forecast": ("forecasts", "*"),
     "price_bar": ("prices", "*"),
     "fundamentals": ("fundamentals", "*"),
+    "screen_result": ("screens", "*"),
 }
 
 

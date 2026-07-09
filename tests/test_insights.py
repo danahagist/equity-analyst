@@ -175,7 +175,7 @@ def test_export_csv_round_trip(tmp_path) -> None:
 
     paths = export_tables(conn, tmp_path, fmt="csv")
     names = {p.name for p in paths}
-    assert names == {"runs.csv", "forecasts.csv", "prices.csv", "fundamentals.csv"}
+    assert names == {"runs.csv", "forecasts.csv", "prices.csv", "fundamentals.csv", "screens.csv"}
 
     runs = pd.read_csv(tmp_path / "runs.csv")
     assert list(runs["ticker"]) == ["AAA"]

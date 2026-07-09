@@ -29,7 +29,9 @@ skill-gated veto in `rank`. See CLAUDE.md.
 equity-analyst screen --universe russell1000 --top 50
 ```
 
-Full ranking lands in `outputs/screen-<date>.csv`.
+The full ranking is recorded in SQLite (the system of record — `rank` and
+`etf-strategy` read it back automatically) and exported to
+`outputs/screen-<date>.csv` for reference.
 
 ## Phase 2 — forecast the survivors (no LLM, ~1–1.5 min each)
 
@@ -45,7 +47,7 @@ queue position is not a risk clearance.)
 ## Phase 3 — rank (walk-down queue)
 
 ```bash
-equity-analyst rank --screen-csv outputs/screen-<date>.csv --top 50
+equity-analyst rank --top 50          # reads the latest stored screen from SQLite
 ```
 
 Orders the queue by blended score and applies the **skill-gated veto**: a name
@@ -88,7 +90,7 @@ alternative to single-name exposure: greedy overlap-aware set-cover plus
 historical risk/return stats and pairwise correlations):
 
 ```bash
-equity-analyst etf-strategy --screen-csv outputs/screen-<date>.csv --top 50
+equity-analyst etf-strategy --top 50   # reads the latest stored screen from SQLite
 ```
 
 Then **write the executive summary yourself** (you have read every report):

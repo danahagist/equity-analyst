@@ -132,6 +132,56 @@ def save_forecast_rows(conn: sqlite3.Connection, ticker: str, as_of: str, rows: 
     return len(rows)
 
 
+def save_screen_results(conn: sqlite3.Connection, *, as_of: str, ranked: list) -> int:
+    """Store a screen's full ranked universe (``ScreenRow`` objects), replacing
+    any earlier screen persisted for the same date."""
+    conn.execute("DELETE FROM screen_result WHERE as_of = ?", (as_of,))
+    conn.executemany(
+        "INSERT OR REPLACE INTO screen_result (ticker, as_of, rank, blended, "
+        "street_score, garp_score, target_upside, price, name, sector) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                row.ticker,
+                as_of,
+                i,
+                _f(row.blended),
+                _f(row.street_score),
+                _f(row.garp_score),
+                _f(row.factors.get("target_upside")),
+                _f(row.price),
+                row.name,
+                row.sector,
+            )
+            for i, row in enumerate(ranked, start=1)
+        ],
+    )
+    conn.commit()
+    return len(ranked)
+
+
+def load_screen_results(
+    conn: sqlite3.Connection, *, as_of: str | None = None, top: int | None = None
+) -> tuple[str | None, list[tuple[str, float | None]]]:
+    """Return ``(screen_date, [(ticker, blended), ...])`` in rank order.
+
+    Uses the latest stored screen when ``as_of`` is omitted; returns
+    ``(None, [])`` when nothing is stored.
+    """
+    if as_of is None:
+        row = conn.execute("SELECT MAX(as_of) AS latest FROM screen_result").fetchone()
+        as_of = row["latest"] if row else None
+    if as_of is None:
+        return None, []
+    query = "SELECT ticker, blended FROM screen_result WHERE as_of = ? ORDER BY rank"
+    params: tuple = (as_of,)
+    if top is not None:
+        query += " LIMIT ?"
+        params = (as_of, top)
+    rows = conn.execute(query, params).fetchall()
+    return as_of, [(r["ticker"], r["blended"]) for r in rows]
+
+
 def _f(value: object) -> float | None:
     """Coerce to float, mapping pandas/NumPy NaN and None to SQL NULL."""
     if value is None or pd.isna(value):

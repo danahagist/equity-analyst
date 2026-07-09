@@ -78,12 +78,11 @@ pipeline"** in Claude Code):
 ```bash
 equity-analyst screen --universe russell1000 --top 50   # cheap, LLM-free ranking
 equity-analyst prep T1 ... T50                          # forecasts for all survivors
-equity-analyst rank --screen-csv outputs/screen-<date>.csv --top 50
-#   → walk-down queue: blended score orders it; the forecast can only demote
-#     (skill-gated veto), never promote
+equity-analyst rank --top 50         # walk-down queue from the stored screen:
+#   blended score orders it; the forecast can only demote (skill-gated veto)
 #   → committee runs one name at a time until 5 clear the bar:
 equity-analyst qualify T1 T2 ...     # PM Buy+, medium+ conviction, not split
-equity-analyst etf-strategy --screen-csv outputs/screen-<date>.csv --top 50
+equity-analyst etf-strategy --top 50
 equity-analyst digest Q1 ... Q5 --exec-summary-file <path> \
   --etf-strategy-file outputs/etf-strategy-<date>.md      # one decision document
 equity-analyst notify --subject "Weekly committee" --body-file outputs/digest-<date>.md

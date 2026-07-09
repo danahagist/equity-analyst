@@ -160,9 +160,7 @@ def test_pm_synthesis_validates_like_a_verdict() -> None:
 
 def test_digest_discloses_excluded_tickers() -> None:
     entries = [{"packet": _packet(), "verdicts": _verdicts(), "pm": _pm()}]
-    md = build_digest(
-        entries, as_of="2026-07-08", excluded=[("LOST", "no packet for LOST")]
-    )
+    md = build_digest(entries, as_of="2026-07-08", excluded=[("LOST", "no packet for LOST")])
     assert "Excluded from this digest" in md
     assert "**LOST** (no packet for LOST)" in md
 
@@ -178,16 +176,11 @@ def test_digest_survives_packet_without_price() -> None:
 
 def test_exec_summary_headings_are_demoted() -> None:
     entries = [{"packet": _packet(), "verdicts": _verdicts(), "pm": _pm()}]
-    md = build_digest(
-        entries, as_of="2026-07-08", exec_summary="# My own title\nBody text."
-    )
+    md = build_digest(entries, as_of="2026-07-08", exec_summary="# My own title\nBody text.")
     assert "\n### My own title" in md
     assert md.count("\n# ") == 0  # single H1 (the document title at line 1)
 
 
 def test_first_sentences_survives_corporate_abbreviations() -> None:
     text = "Apple Inc. designs smartphones. It also sells services. Third point."
-    assert (
-        first_sentences(text, n=2)
-        == "Apple Inc. designs smartphones. It also sells services."
-    )
+    assert first_sentences(text, n=2) == "Apple Inc. designs smartphones. It also sells services."

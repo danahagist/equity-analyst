@@ -10,11 +10,9 @@ from __future__ import annotations
 
 import pandas as pd
 
-from equity_analyst.data.base import PRICE_COLUMNS
+from equity_analyst.data.base import PRICE_COLUMNS, DataUnavailable
 
-
-class DataUnavailable(RuntimeError):
-    """Raised when the source cannot be reached or returns nothing usable."""
+__all__ = ["DataUnavailable", "YahooDataSource", "normalize_prices"]
 
 
 class YahooDataSource:

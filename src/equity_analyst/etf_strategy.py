@@ -26,7 +26,6 @@ Decision support, not financial advice, and never orders.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -169,7 +168,7 @@ def fetch_stats(
     progress=None,
 ) -> list[ETFStats]:
     """Pull price history for SPY + each basket fund and compute statistics."""
-    from equity_analyst.data.yahoo import DataUnavailable
+    from equity_analyst.data.base import DataUnavailable, fetch_many
 
     if not etfs:
         return []  # don't spend a SPY fetch when there's nothing to benchmark
@@ -181,20 +180,26 @@ def fetch_stats(
     except DataUnavailable:
         pass  # betas become "—"; disclosed by their absence
 
+    frames, failures = fetch_many(
+        etfs,
+        lambda etf: data_source.get_prices(etf, period=period),
+        delay=delay,
+        progress=progress,
+        label="stats",
+        progress_every=1,
+    )
+    failure_reasons = dict(failures)
+
     out: list[ETFStats] = []
-    for i, etf in enumerate(etfs):
-        if progress:
-            progress(f"stats {i + 1}/{len(etfs)} ({etf})")
-        try:
-            stats = compute_stats(data_source.get_prices(etf, period=period), spy_returns)
-        except DataUnavailable as exc:
-            stats = {"error": str(exc)}
+    for etf in (str(e).upper() for e in etfs):
+        if etf in failure_reasons:
+            out.append(ETFStats(etf=etf, error=failure_reasons[etf]))
+            continue
+        stats = compute_stats(frames[etf], spy_returns)
         if "error" in stats:
             out.append(ETFStats(etf=etf, error=stats["error"]))
         else:
             out.append(ETFStats(etf=etf, _returns=stats.pop("returns"), **stats))
-        if delay:
-            time.sleep(delay)
     return out
 
 

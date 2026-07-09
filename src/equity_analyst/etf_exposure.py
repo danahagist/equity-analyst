@@ -14,10 +14,9 @@ under-counting small tail positions. The report says so; not financial advice.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 
-from equity_analyst.data.base import MarketDataSource
+from equity_analyst.data.base import MarketDataSource, fetch_many
 
 # Curated universe: broad, sector (SPDR), and thematic funds spanning the
 # sectors the screen/committee tend to reach (semis, software, energy, gold
@@ -76,41 +75,18 @@ def fetch_holdings(
     etfs: list[str], *, data_source: MarketDataSource, delay: float = 0.3, progress=None
 ) -> tuple[dict[str, dict[str, float]], list[tuple[str, str]]]:
     """Pull holdings for each ETF; collect failures rather than aborting."""
-    from equity_analyst.data.yahoo import DataUnavailable
-
-    holdings: dict[str, dict[str, float]] = {}
-    failures: list[tuple[str, str]] = []
-    for i, raw in enumerate(etfs):
-        etf = raw.upper()
-        if progress and (i % 10 == 0 or i == len(etfs) - 1):
-            progress(f"holdings {i + 1}/{len(etfs)} ({etf})")
-        try:
-            holdings[etf] = data_source.get_etf_holdings(etf)
-        except DataUnavailable as exc:
-            failures.append((etf, str(exc)))
-            continue
-        if delay:
-            time.sleep(delay)
-    return holdings, failures
+    return fetch_many(
+        etfs, data_source.get_etf_holdings, delay=delay, progress=progress, label="holdings"
+    )
 
 
 def fetch_profiles(
     etfs: list[str], *, data_source: MarketDataSource, delay: float = 0.3, progress=None
 ) -> dict[str, str]:
     """Pull each fund's own description; missing profiles are skipped, not fatal."""
-    from equity_analyst.data.yahoo import DataUnavailable
-
-    profiles: dict[str, str] = {}
-    for i, raw in enumerate(etfs):
-        etf = raw.upper()
-        if progress and (i % 10 == 0 or i == len(etfs) - 1):
-            progress(f"profile {i + 1}/{len(etfs)} ({etf})")
-        try:
-            profiles[etf] = data_source.get_fund_profile(etf)
-        except DataUnavailable:
-            continue
-        if delay:
-            time.sleep(delay)
+    profiles, _failures = fetch_many(
+        etfs, data_source.get_fund_profile, delay=delay, progress=progress, label="profile"
+    )
     return profiles
 
 
