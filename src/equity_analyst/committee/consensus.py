@@ -92,8 +92,6 @@ def _headline(
     if not dissenters:
         return base + "."
     notes = "; ".join(
-        f"{v.analyst} dissents ({v.rating_label})"
-        for v in verdicts
-        if v.analyst in dissenters
+        f"{v.analyst} dissents ({v.rating_label})" for v in verdicts if v.analyst in dissenters
     )
     return f"{base}. {notes}."

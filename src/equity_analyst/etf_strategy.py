@@ -50,6 +50,17 @@ class BasketPick:
         return {t: w for t, w in self.all_matched.items() if t not in self.marginal}
 
 
+def _candidate_scores(candidates: list[tuple[str, float | None]]) -> dict[str, float]:
+    """Ticker -> score for the set-cover. Unscored names get the mean of the
+    real scores (not 1.0 — the percentile maximum — which would let a hand-typed
+    extra ticker outweigh every genuinely screened name), or 1.0 only when no
+    candidate is scored at all (plain-tickers invocation: equal weights).
+    """
+    known = [b for _, b in candidates if b is not None]
+    default = sum(known) / len(known) if known else 1.0
+    return {t.upper(): (b if b is not None else default) for t, b in candidates}
+
+
 def build_basket(
     candidates: list[tuple[str, float | None]],
     holdings_by_etf: dict[str, dict[str, float]],
@@ -62,38 +73,34 @@ def build_basket(
     basket fund holds (in its top holdings). Ties break toward the fund with
     more in-fund weight in the marginal names.
     """
-    scores = {t.upper(): (b if b is not None else 1.0) for t, b in candidates}
+    scores = _candidate_scores(candidates)
     matched_by_etf = {
         etf: {sym: w for sym, w in holdings.items() if sym in scores}
         for etf, holdings in holdings_by_etf.items()
     }
 
     picks: list[BasketPick] = []
+    picked: set[str] = set()
     covered: set[str] = set()
     for _ in range(max_etfs):
-        best: tuple[float, float, str] | None = None  # (gain, marginal weight, etf)
+        best: tuple[tuple[float, float, str], dict[str, float]] | None = None
         for etf, matched in matched_by_etf.items():
-            if any(p.etf == etf for p in picks):
+            if etf in picked:
                 continue
             marginal = {t: w for t, w in matched.items() if t not in covered}
             if not marginal:
                 continue
             gain = sum(scores[t] for t in marginal)
             key = (gain, sum(marginal.values()), etf)
-            if best is None or key > best:
-                best = key
+            if best is None or key > best[0]:
+                best = (key, marginal)
         if best is None:
             break  # nothing adds coverage — stop early rather than pad the basket
-        _, _, etf = best
-        marginal = {t: w for t, w in matched_by_etf[etf].items() if t not in covered}
+        (gain, _, etf), marginal = best
         picks.append(
-            BasketPick(
-                etf=etf,
-                marginal=marginal,
-                all_matched=matched_by_etf[etf],
-                gain=sum(scores[t] for t in marginal),
-            )
+            BasketPick(etf=etf, marginal=marginal, all_matched=matched_by_etf[etf], gain=gain)
         )
+        picked.add(etf)
         covered |= set(marginal)
 
     uncovered = [t for t, _ in candidates if t.upper() not in covered]
@@ -106,13 +113,13 @@ def build_basket(
 @dataclass
 class ETFStats:
     etf: str
-    years: float  # span of history the stats cover
-    total_return_1y: float | None
-    cagr: float | None  # over the full fetched span
-    ann_vol: float | None
-    max_drawdown: float | None
-    beta_vs_spy: float | None
-    return_over_vol: float | None  # CAGR / ann_vol; NOT a Sharpe ratio (no rf)
+    years: float = 0.0  # span of history the stats cover
+    total_return_1y: float | None = None
+    cagr: float | None = None  # over the full fetched span
+    ann_vol: float | None = None
+    max_drawdown: float | None = None
+    beta_vs_spy: float | None = None
+    return_over_vol: float | None = None  # CAGR / ann_vol; NOT a Sharpe ratio (no rf)
     error: str | None = None
     _returns: pd.Series | None = field(default=None, repr=False)
 
@@ -164,6 +171,9 @@ def fetch_stats(
     """Pull price history for SPY + each basket fund and compute statistics."""
     from equity_analyst.data.yahoo import DataUnavailable
 
+    if not etfs:
+        return []  # don't spend a SPY fetch when there's nothing to benchmark
+
     spy_returns: pd.Series | None = None
     try:
         spy = data_source.get_prices("SPY", period=period)
@@ -178,24 +188,11 @@ def fetch_stats(
         try:
             stats = compute_stats(data_source.get_prices(etf, period=period), spy_returns)
         except DataUnavailable as exc:
-            out.append(ETFStats(etf, 0, None, None, None, None, None, None, error=str(exc)))
-            continue
+            stats = {"error": str(exc)}
         if "error" in stats:
-            out.append(ETFStats(etf, 0, None, None, None, None, None, None, error=stats["error"]))
+            out.append(ETFStats(etf=etf, error=stats["error"]))
         else:
-            out.append(
-                ETFStats(
-                    etf=etf,
-                    years=stats["years"],
-                    total_return_1y=stats["total_return_1y"],
-                    cagr=stats["cagr"],
-                    ann_vol=stats["ann_vol"],
-                    max_drawdown=stats["max_drawdown"],
-                    beta_vs_spy=stats["beta_vs_spy"],
-                    return_over_vol=stats["return_over_vol"],
-                    _returns=stats["returns"],
-                )
-            )
+            out.append(ETFStats(etf=etf, _returns=stats.pop("returns"), **stats))
         if delay:
             time.sleep(delay)
     return out
@@ -235,8 +232,12 @@ def build_strategy_report(
 ) -> str:
     n = len(candidates)
     covered_names = n - len(uncovered)
-    total_mass = sum((b if b is not None else 1.0) for _, b in candidates)
+    # Same score semantics as build_basket, so the reported mass matches the
+    # greedy decisions; guard the all-zero-scores edge (percentile ranks can
+    # legitimately be 0.0) instead of dividing by zero.
+    total_mass = sum(_candidate_scores(candidates).values())
     covered_mass = sum(p.gain for p in picks)
+    mass_text = f" ({covered_mass / total_mass:.0%} of blended-score mass)" if total_mass else ""
 
     lines = [
         f"# ETF strategy — coverage of the screen's top {n} ({as_of})",
@@ -252,8 +253,7 @@ def build_strategy_report(
         "advice, and not orders._",
         "",
         f"Swept {swept} funds. The basket covers **{covered_names} of {n}** screened "
-        f"names ({covered_mass / total_mass:.0%} of blended-score mass) via their "
-        "top holdings.",
+        f"names{mass_text} via their top holdings.",
         "",
         "## The basket",
         "",

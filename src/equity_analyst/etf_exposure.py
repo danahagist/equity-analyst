@@ -121,8 +121,13 @@ def build_exposure_report(
     top: int,
     failures: list[tuple[str, str]],
     as_of: str,
+    swept: int | None = None,
     descriptions: dict[str, str] | None = None,
 ) -> str:
+    # `swept` is the true universe size (fetched OK + failures). Deriving it
+    # from len(exposures) undercounts: funds that fetched fine but hold zero
+    # candidates would vanish from the denominator, misstating the search.
+    swept = swept if swept is not None else len(exposures) + len(failures)
     lines = [
         f"# ETF exposure to your candidates ({as_of})",
         "",
@@ -131,8 +136,8 @@ def build_exposure_report(
         "meaningful position and under-counts small tail weights. A broader-"
         "exposure aid, not financial advice._".format(names=", ".join(t.upper() for t in tickers)),
         "",
-        f"Swept {len(exposures) + len(failures)} ETFs; {len(exposures)} hold at least "
-        f"one candidate ({len(failures)} had no/failed holdings data).",
+        f"Swept {swept} ETFs; {len(exposures)} hold at least one candidate "
+        f"in their top holdings ({len(failures)} fetches failed).",
         "",
         "| # | ETF | Candidates held | Combined weight | Breakdown |",
         "|---|-----|-----------------|-----------------|-----------|",

@@ -143,3 +143,51 @@ def test_digest_survives_missing_pm() -> None:
     entries = [{"packet": _packet(), "verdicts": _verdicts(), "pm": None}]
     md = build_digest(entries, as_of="2026-07-08")
     assert "no PM call" in md and "Does not qualify" in md
+
+
+def test_pm_synthesis_validates_like_a_verdict() -> None:
+    import pytest
+
+    from equity_analyst.committee.portfolio_manager import pm_from_parsed
+
+    base = {"rating": 1, "conviction": "medium", "horizon": "1y", "synthesis": "s"}
+    assert pm_from_parsed(base).rating == 1
+    with pytest.raises(ValueError, match="out of range"):
+        pm_from_parsed({**base, "rating": 3})
+    with pytest.raises(ValueError, match="conviction"):
+        pm_from_parsed({**base, "conviction": "Medium"})
+
+
+def test_digest_discloses_excluded_tickers() -> None:
+    entries = [{"packet": _packet(), "verdicts": _verdicts(), "pm": _pm()}]
+    md = build_digest(
+        entries, as_of="2026-07-08", excluded=[("LOST", "no packet for LOST")]
+    )
+    assert "Excluded from this digest" in md
+    assert "**LOST** (no packet for LOST)" in md
+
+
+def test_digest_survives_packet_without_price() -> None:
+    packet = _packet()
+    packet["last_price"] = None
+    entries = [{"packet": packet, "verdicts": _verdicts(), "pm": _pm()}]
+    md = build_digest(entries, as_of="2026-07-08")
+    assert "price unavailable" in md
+    assert "### Levels" not in md  # no plan derivable, section skipped honestly
+
+
+def test_exec_summary_headings_are_demoted() -> None:
+    entries = [{"packet": _packet(), "verdicts": _verdicts(), "pm": _pm()}]
+    md = build_digest(
+        entries, as_of="2026-07-08", exec_summary="# My own title\nBody text."
+    )
+    assert "\n### My own title" in md
+    assert md.count("\n# ") == 0  # single H1 (the document title at line 1)
+
+
+def test_first_sentences_survives_corporate_abbreviations() -> None:
+    text = "Apple Inc. designs smartphones. It also sells services. Third point."
+    assert (
+        first_sentences(text, n=2)
+        == "Apple Inc. designs smartphones. It also sells services."
+    )

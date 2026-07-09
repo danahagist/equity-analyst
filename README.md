@@ -69,11 +69,37 @@ per-horizon forecasts in SQLite (`data/equity_analyst.db`) — the system of
 record, so forecast-vs-actual skill can be audited over time. `data/` and
 `outputs/` are gitignored.
 
+### The weekly pipeline (screen → rank → walk-down → digest)
+
+For working a whole universe instead of one ticker, the bundled
+`weekly-pipeline` skill chains the funnel end to end (say **"run the weekly
+pipeline"** in Claude Code):
+
+```bash
+equity-analyst screen --universe russell1000 --top 50   # cheap, LLM-free ranking
+equity-analyst prep T1 ... T50                          # forecasts for all survivors
+equity-analyst rank --screen-csv outputs/screen-<date>.csv --top 50
+#   → walk-down queue: blended score orders it; the forecast can only demote
+#     (skill-gated veto), never promote
+#   → committee runs one name at a time until 5 clear the bar:
+equity-analyst qualify T1 T2 ...     # PM Buy+, medium+ conviction, not split
+equity-analyst etf-strategy --screen-csv outputs/screen-<date>.csv --top 50
+equity-analyst digest Q1 ... Q5 --exec-summary-file <path> \
+  --etf-strategy-file outputs/etf-strategy-<date>.md      # one decision document
+equity-analyst notify --subject "Weekly committee" --body-file outputs/digest-<date>.md
+```
+
+Selection is by the blended screen score only — the forecast's point "upside"
+never promotes a name (it has no skill vs drift at most horizons); it can only
+demote via a skill-gated veto, with every demotion reasoned and visible.
+
 ### Working with accumulated runs
 
 ```bash
 equity-analyst compare               # rank the latest run per ticker side by side
 equity-analyst compare AAPL MSFT     # …or just these tickers
+equity-analyst levels AAPL MSFT      # entry/exit bands from the calibrated intervals
+equity-analyst etf-exposure AAPL     # which funds hold your candidates
 equity-analyst skill-report          # audit stored forecasts vs realized prices
 equity-analyst export                # dump the SQLite record to CSV (or --format xlsx)
 ```

@@ -210,7 +210,9 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
   full top-10 run; [[weekly-pipeline]] skill is the single entry point, each
   phase also standalone):
   1. `screen` Russell 1000 → top 50 by blended score.
-  2. `prep` all 50 (forecasts, no LLM) — feeds the veto pass + risk overlay.
+  2. `prep` all 50 (forecasts, no LLM) — feeds the veto pass. (The veto reads
+     skill-flagged point signals only; interval/downside risk surfaces in the
+     digest's levels rows, not in queue position.)
   3. `rank` — walk-down queue ordered by **blended score only**. The forecast
      never promotes a name (no skill vs drift at most horizons; drift "upside"
      also triple-counts the Street-gap echo) but can **demote via a

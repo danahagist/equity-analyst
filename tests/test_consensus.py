@@ -21,8 +21,13 @@ def test_unanimous_buy() -> None:
 
 
 def test_majority_with_dissent() -> None:
-    verdicts = [_v("Technical", 1), _v("Fundamental", -1), _v("News/Social", 1),
-                _v("Research", 2), _v("PM", 1)]
+    verdicts = [
+        _v("Technical", 1),
+        _v("Fundamental", -1),
+        _v("News/Social", 1),
+        _v("Research", 2),
+        _v("PM", 1),
+    ]
     c = compute_consensus(verdicts)
     assert c.leaning == "Buy"
     assert c.agreement_level == "strong"  # 4 of 5 == ceil(2*5/3)

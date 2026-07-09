@@ -37,8 +37,10 @@ Full ranking lands in `outputs/screen-<date>.csv`.
 equity-analyst prep T1 T2 ... T50        # all SCREEN_TOP names from the CSV
 ```
 
-Prepping all 50 is deliberate: it feeds the veto pass and gives the risk
-overlay before any committee spend.
+Prepping all 50 is deliberate: it feeds the veto pass before any committee
+spend. (Note the veto reads only skill-flagged *point* signals — interval
+width/downside risk first surfaces in the digest's levels rows, so a clean
+queue position is not a risk clearance.)
 
 ## Phase 3 — rank (walk-down queue)
 
@@ -68,7 +70,9 @@ equity-analyst qualify T1 T2 ...          # all names committee'd so far
 **The bar:** PM Buy or better, **medium+ conviction**, committee **not split**.
 Stop when 5 qualify. Non-qualifiers stay in the digest's audit trail — they are
 disclosed, not discarded. Run web seats in waves of ~6 to respect the session
-limit; per-seat verdict files make a hit-the-wall run resumable.
+limit; per-seat verdict files make a hit-the-wall run resumable. This is the
+usage-heavy phase — if the user is watching usage, pause after the first few
+names and report the impact before continuing.
 
 ## Phase 5 — the combined decision digest
 
@@ -103,8 +107,13 @@ summary from thin air — it must be grounded in the seat writeups.
 
 ```bash
 equity-analyst notify --subject "Weekly committee — <date>" \
-  --body-file outputs/digest-<date>.md
+  --body-file outputs/digest-<date>.md \
+  --attach outputs/Q1-<date>.md --attach outputs/Q2-<date>.md ...
 ```
+
+Attach the five full per-ticker reports: the digest carries only each seat's
+bottom line, and the recipient must be able to read a dissenting writeup in
+full without access to the run machine's gitignored `outputs/`.
 
 Needs `SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD/SMTP_FROM/SMTP_TO` in `.env`
 (Gmail: App Password). If SMTP isn't configured, `notify` exits with guidance —

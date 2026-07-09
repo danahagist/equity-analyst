@@ -33,8 +33,10 @@ def test_verdict_labels_and_validation() -> None:
 
 
 def test_verdict_from_parsed() -> None:
-    v = verdict_from_parsed("Fundamental", {"rating": -1, "conviction": "medium",
-                                            "horizon": "6-12mo", "evidence": "rich valuation"})
+    v = verdict_from_parsed(
+        "Fundamental",
+        {"rating": -1, "conviction": "medium", "horizon": "6-12mo", "evidence": "rich valuation"},
+    )
     assert v.rating == -1 and v.rating_label == "Sell" and v.analyst == "Fundamental"
     with pytest.raises(ValueError, match="no structured output"):
         verdict_from_parsed("Fundamental", None)
@@ -45,10 +47,19 @@ def test_verdict_from_parsed() -> None:
 
 def _horizon(label: str, exp_ret: float, beats: bool) -> HorizonForecast:
     return HorizonForecast(
-        label=label, steps=21, as_of_date="2026-01-01", target_date="2026-02-01",
-        model="Theta" if beats else "RWD", point=100.0, lower=90.0, upper=110.0,
-        interval_level=80, beats_baseline=beats, baseline_model="RWD",
-        n_backtest_windows=5 if beats else 0, metrics={"expected_return": exp_ret},
+        label=label,
+        steps=21,
+        as_of_date="2026-01-01",
+        target_date="2026-02-01",
+        model="Theta" if beats else "RWD",
+        point=100.0,
+        lower=90.0,
+        upper=110.0,
+        interval_level=80,
+        beats_baseline=beats,
+        baseline_model="RWD",
+        n_backtest_windows=5 if beats else 0,
+        metrics={"expected_return": exp_ret},
     )
 
 
@@ -60,8 +71,12 @@ def _forecast(exp_ret: float, beats: bool, all_beat: bool = False) -> ForecastRe
         _horizon("1y", exp_ret * 12, beats and all_beat),
     ]
     return ForecastResult(
-        ticker="TEST", as_of_date="2026-01-01", last_price=100.0,
-        interval_level=80, horizons=horizons, models_considered=["RWD", "Theta"],
+        ticker="TEST",
+        as_of_date="2026-01-01",
+        last_price=100.0,
+        interval_level=80,
+        horizons=horizons,
+        models_considered=["RWD", "Theta"],
     )
 
 
@@ -95,13 +110,34 @@ def test_technical_analyst_end_to_end() -> None:
 
 
 def test_llm_analysts_are_two_phase_and_return_verdicts() -> None:
-    llm = FakeLLMClient(verdicts={
-        ROLE_FUNDAMENTAL: {"rating": 1, "conviction": "high", "horizon": "1y", "evidence": "moat"},
-        ROLE_NEWS_SOCIAL: {"rating": 0, "conviction": "low", "horizon": "1mo", "evidence": "quiet"},
-        ROLE_RESEARCH: {"rating": 2, "conviction": "medium", "horizon": "1y", "evidence": "upgrades"},
-    })
-    ctx = AnalystContext(ticker="NVDA", last_price=123.45,
-                         fundamentals={"trailingPE": 30}, analyst_info={"targetMeanPrice": 150})
+    llm = FakeLLMClient(
+        verdicts={
+            ROLE_FUNDAMENTAL: {
+                "rating": 1,
+                "conviction": "high",
+                "horizon": "1y",
+                "evidence": "moat",
+            },
+            ROLE_NEWS_SOCIAL: {
+                "rating": 0,
+                "conviction": "low",
+                "horizon": "1mo",
+                "evidence": "quiet",
+            },
+            ROLE_RESEARCH: {
+                "rating": 2,
+                "conviction": "medium",
+                "horizon": "1y",
+                "evidence": "upgrades",
+            },
+        }
+    )
+    ctx = AnalystContext(
+        ticker="NVDA",
+        last_price=123.45,
+        fundamentals={"trailingPE": 30},
+        analyst_info={"targetMeanPrice": 150},
+    )
 
     for analyst, role, rating in [
         (FundamentalAnalyst(llm), ROLE_FUNDAMENTAL, 1),
@@ -125,9 +161,11 @@ def test_llm_analysts_are_two_phase_and_return_verdicts() -> None:
 
 
 def test_fundamental_prompt_grounds_on_factsheet() -> None:
-    llm = FakeLLMClient(verdicts={
-        ROLE_FUNDAMENTAL: {"rating": 0, "conviction": "low", "horizon": "1y", "evidence": "x"},
-    })
+    llm = FakeLLMClient(
+        verdicts={
+            ROLE_FUNDAMENTAL: {"rating": 0, "conviction": "low", "horizon": "1y", "evidence": "x"},
+        }
+    )
     ctx = AnalystContext(ticker="AAPL", last_price=200.0, fundamentals={"trailingPE": 28.5})
     FundamentalAnalyst(llm).evaluate(ctx)
     research = llm.calls[-2]  # phase-1 research call carries the fact-sheet
@@ -140,12 +178,16 @@ def test_fundamental_prompt_grounds_on_factsheet() -> None:
 def test_fundamentals_caveats_flags_one_off_gain_and_hypergrowth() -> None:
     from equity_analyst.committee.base import fundamentals_caveats
 
-    caveats = "\n".join(fundamentals_caveats({
-        "sector": "Communication Services",
-        "profitMargins": 0.93,
-        "operatingMargins": -0.32,
-        "revenueGrowth": 6.8,
-    }))
+    caveats = "\n".join(
+        fundamentals_caveats(
+            {
+                "sector": "Communication Services",
+                "profitMargins": 0.93,
+                "operatingMargins": -0.32,
+                "revenueGrowth": 6.8,
+            }
+        )
+    )
     assert "one-off non-operating gain" in caveats
     assert "hypergrowth" in caveats
     assert "provider did not return the company name" in caveats
@@ -154,34 +196,46 @@ def test_fundamentals_caveats_flags_one_off_gain_and_hypergrowth() -> None:
 def test_fundamentals_caveats_flags_buyback_shrunken_equity() -> None:
     from equity_analyst.committee.base import fundamentals_caveats
 
-    caveats = "\n".join(fundamentals_caveats({
-        "longName": "Apple Inc.",
-        "profitMargins": 0.27,
-        "operatingMargins": 0.32,
-        "returnOnEquity": 1.41,
-    }))
+    caveats = "\n".join(
+        fundamentals_caveats(
+            {
+                "longName": "Apple Inc.",
+                "profitMargins": 0.27,
+                "operatingMargins": 0.32,
+                "returnOnEquity": 1.41,
+            }
+        )
+    )
     assert "ROE above 100%" in caveats
 
 
 def test_fundamentals_caveats_quiet_on_clean_data() -> None:
     from equity_analyst.committee.base import fundamentals_caveats
 
-    assert fundamentals_caveats({
-        "longName": "Clean Co.",
-        "profitMargins": 0.10,
-        "operatingMargins": 0.12,
-        "returnOnEquity": 0.18,
-        "revenueGrowth": 0.08,
-        "trailingPE": 22.0,
-    }) == []
+    assert (
+        fundamentals_caveats(
+            {
+                "longName": "Clean Co.",
+                "profitMargins": 0.10,
+                "operatingMargins": 0.12,
+                "returnOnEquity": 0.18,
+                "revenueGrowth": 0.08,
+                "trailingPE": 22.0,
+            }
+        )
+        == []
+    )
 
 
 def test_format_analyst_info_flags_missing_consensus_fields() -> None:
     from equity_analyst.committee.base import AnalystContext, format_analyst_info
 
-    ctx = AnalystContext(ticker="SNOW", analyst_info={
-        "recommendationKey": "none",
-        "numberOfAnalystOpinions": 48,
-        "targetMeanPrice": 292.5,
-    })
+    ctx = AnalystContext(
+        ticker="SNOW",
+        analyst_info={
+            "recommendationKey": "none",
+            "numberOfAnalystOpinions": 48,
+            "targetMeanPrice": 292.5,
+        },
+    )
     assert "no consensus rating fields" in format_analyst_info(ctx)

@@ -30,12 +30,22 @@ def test_build_exposure_empty_when_no_overlap() -> None:
 
 
 def test_exposure_report_shape() -> None:
-    holdings = {"SMH": {"NVDA": 0.18, "MU": 0.06}, "GDX": {"NEM": 0.11}}
+    # XLE fetched fine but holds no candidate — it must still count as swept.
+    holdings = {
+        "SMH": {"NVDA": 0.18, "MU": 0.06},
+        "GDX": {"NEM": 0.11},
+        "XLE": {"XOM": 0.2},
+    }
     exposures = build_exposure(["NVDA", "MU", "NEM"], holdings)
     report = build_exposure_report(
-        exposures, tickers=["NVDA", "MU", "NEM"], top=10, failures=[("BADETF", "boom")],
+        exposures,
+        tickers=["NVDA", "MU", "NEM"],
+        top=10,
+        failures=[("BADETF", "boom")],
         as_of="2026-07-08",
+        swept=len(holdings) + 1,
     )
     assert "| 1 | SMH | 2 | 24.0% |" in report
     assert "not financial advice" in report
-    assert "1 had no/failed holdings data" in report
+    assert "Swept 4 ETFs; 2 hold at least one candidate" in report
+    assert "(1 fetches failed)" in report

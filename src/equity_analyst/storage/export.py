@@ -16,8 +16,7 @@ import pandas as pd
 _TABLES: dict[str, tuple[str, str]] = {
     "committee_run": (
         "runs",
-        "ticker, as_of, created_at, pm_rating, pm_conviction, "
-        "consensus_leaning, blended_score",
+        "ticker, as_of, created_at, pm_rating, pm_conviction, consensus_leaning, blended_score",
     ),
     "forecast": ("forecasts", "*"),
     "price_bar": ("prices", "*"),
@@ -25,9 +24,7 @@ _TABLES: dict[str, tuple[str, str]] = {
 }
 
 
-def export_tables(
-    conn: sqlite3.Connection, out_dir: Path, *, fmt: str = "csv"
-) -> list[Path]:
+def export_tables(conn: sqlite3.Connection, out_dir: Path, *, fmt: str = "csv") -> list[Path]:
     """Write each table to ``out_dir``; returns the paths written.
 
     ``fmt`` is ``csv`` (one file per table) or ``xlsx`` (one workbook, one

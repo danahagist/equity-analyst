@@ -106,9 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=("Fundamental", "News/Social", "Research", "PM"),
         help="Which seat this verdict belongs to (PM = portfolio-manager synthesis)",
     )
-    p_submit.add_argument(
-        "--file", help="Path to the verdict JSON (default: read from stdin)"
-    )
+    p_submit.add_argument("--file", help="Path to the verdict JSON (default: read from stdin)")
     p_submit.add_argument("--as-of", help="Session date (defaults to the latest packet)")
 
     p_screen = sub.add_parser(
@@ -121,13 +119,11 @@ def main(argv: list[str] | None = None) -> int:
     p_screen.add_argument(
         "--universe",
         choices=("russell1000",),
-        help="Fetch a named universe (Russell 1000 via iShares IWB holdings)",
+        help="Fetch a named universe (Russell 1000 via the Wikipedia components table)",
     )
     p_screen.add_argument("--tickers-file", help="File with one ticker per line")
     p_screen.add_argument("--top", type=int, default=25, help="Rows to show (default: 25)")
-    p_screen.add_argument(
-        "--limit", type=int, help="Screen only the first N tickers (for testing)"
-    )
+    p_screen.add_argument("--limit", type=int, help="Screen only the first N tickers (for testing)")
     p_screen.add_argument(
         "--delay", type=float, default=0.3, help="Seconds between fetches (default: 0.3)"
     )
@@ -171,9 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         "etf-exposure",
         help="Phase 6: rank ETFs by exposure to your candidate stocks (broader exposure)",
     )
-    p_etf.add_argument(
-        "tickers", nargs="+", metavar="ticker", help="Candidate stock ticker(s)"
-    )
+    p_etf.add_argument("tickers", nargs="+", metavar="ticker", help="Candidate stock ticker(s)")
     p_etf.add_argument(
         "--etfs", help="Comma-separated ETF universe to sweep (default: curated list)"
     )
@@ -246,16 +240,12 @@ def main(argv: list[str] | None = None) -> int:
         "--attach", action="append", default=[], metavar="PATH", help="File to attach (repeatable)"
     )
 
-    p_compare = sub.add_parser(
-        "compare", help="Rank the latest stored run per ticker side by side"
-    )
+    p_compare = sub.add_parser("compare", help="Rank the latest stored run per ticker side by side")
     p_compare.add_argument(
         "tickers", nargs="*", help="Tickers to compare (default: every stored ticker)"
     )
 
-    p_skill = sub.add_parser(
-        "skill-report", help="Audit stored forecasts against realized prices"
-    )
+    p_skill = sub.add_parser("skill-report", help="Audit stored forecasts against realized prices")
     p_skill.add_argument("--ticker", help="Restrict the audit to one ticker")
 
     p_export = sub.add_parser("export", help="Export the SQLite record to CSV or Excel")
@@ -519,9 +509,7 @@ def _cmd_screen(args: argparse.Namespace) -> int:
     ranked, excluded = score_rows(rows)
     as_of = date.today().isoformat()
     print(
-        build_screen_report(
-            ranked, top=args.top, excluded=excluded, failures=failures, as_of=as_of
-        )
+        build_screen_report(ranked, top=args.top, excluded=excluded, failures=failures, as_of=as_of)
     )
     if ranked:
         csv_path = write_screen_csv(ranked, settings.outputs_dir / f"screen-{as_of}.csv")
@@ -531,25 +519,13 @@ def _cmd_screen(args: argparse.Namespace) -> int:
 
 def _cmd_rank(args: argparse.Namespace) -> int:
     from datetime import date
-    from pathlib import Path
-
     from equity_analyst.config import get_settings
-    from equity_analyst.rank import build_queue, build_rank_report, read_screen_csv
+    from equity_analyst.rank import build_queue, build_rank_report
     from equity_analyst.session import load_packet
 
-    candidates: list[tuple[str, float | None]] = [(t.upper(), None) for t in args.tickers]
-    if args.screen_csv:
-        try:
-            csv_rows = read_screen_csv(Path(args.screen_csv), top=args.top)
-        except (OSError, KeyError) as exc:
-            print(f"error: cannot read screen CSV {args.screen_csv} — {exc}")
-            return 1
-        blended_by_ticker = dict(csv_rows)
-        candidates = [(t, blended_by_ticker.get(t)) for t, _ in candidates]
-        candidates += [(t, b) for t, b in csv_rows if t not in dict(candidates)]
-    if not candidates:
-        print("error: no candidates — pass tickers and/or --screen-csv")
-        return 2
+    candidates = _screen_candidates(args)
+    if isinstance(candidates, int):
+        return candidates
 
     settings = get_settings()
     packets: dict[str, dict] = {}
@@ -563,65 +539,97 @@ def _cmd_rank(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_qualify(args: argparse.Namespace) -> int:
-    from equity_analyst.committee.consensus import compute_consensus
-    from equity_analyst.config import get_settings
-    from equity_analyst.digest import build_qualify_report, check_bar
-    from equity_analyst.session import load_packet, load_session_verdicts
+def _screen_candidates(args: argparse.Namespace) -> list[tuple[str, float | None]] | int:
+    """Resolve (ticker, blended) candidates from explicit tickers + --screen-csv.
 
-    settings = get_settings()
-    quals = []
-    for ticker in args.tickers:
-        try:
-            packet = load_packet(settings.runs_dir, ticker, args.as_of)
-            verdicts, pm, _failures = load_session_verdicts(packet)
-            quals.append(check_bar(packet["ticker"], pm, compute_consensus(verdicts)))
-        except (FileNotFoundError, ValueError) as exc:
-            print(f"error: {exc}")
-    if not quals:
-        return 1
-    print(build_qualify_report(quals, need=args.need))
-    return 0
-
-
-def _cmd_etf_strategy(args: argparse.Namespace) -> int:
-    from datetime import date
+    Shared by `rank` and `etf-strategy` so the semantics can't drift: explicit
+    tickers keep their position at the front but inherit their blended score
+    from the CSV when present (an unscored 'extra' name must not silently
+    out-weigh every genuinely screened one). Returns an exit code on failure.
+    """
     from pathlib import Path
 
-    from equity_analyst.config import get_settings
-    from equity_analyst.data.yahoo import YahooDataSource
-    from equity_analyst.etf_exposure import DEFAULT_ETF_UNIVERSE, fetch_holdings, fetch_profiles
-    from equity_analyst.etf_strategy import (
-        basket_correlations,
-        build_basket,
-        build_strategy_report,
-        fetch_stats,
-    )
     from equity_analyst.rank import read_screen_csv
 
     candidates: list[tuple[str, float | None]] = [(t.upper(), None) for t in args.tickers]
     if args.screen_csv:
         try:
             csv_rows = read_screen_csv(Path(args.screen_csv), top=args.top)
-        except (OSError, KeyError) as exc:
+        except (OSError, ValueError, KeyError) as exc:
             print(f"error: cannot read screen CSV {args.screen_csv} — {exc}")
             return 1
-        known = {t for t, _ in candidates}
-        candidates += [(t, b) for t, b in csv_rows if t not in known]
+        blended_by_ticker = dict(csv_rows)
+        explicit = {t for t, _ in candidates}
+        candidates = [(t, blended_by_ticker.get(t)) for t, _ in candidates]
+        candidates += [(t, b) for t, b in csv_rows if t not in explicit]
     if not candidates:
         print("error: no candidates — pass tickers and/or --screen-csv")
         return 2
+    return candidates
 
-    if args.etfs:
-        universe = [e.strip().upper() for e in args.etfs.split(",") if e.strip()]
-    else:
-        universe = list(dict.fromkeys(DEFAULT_ETF_UNIVERSE))
+
+def _etf_universe(args: argparse.Namespace) -> list[str]:
+    from equity_analyst.etf_exposure import DEFAULT_ETF_UNIVERSE
+
+    if getattr(args, "etfs", None):
+        return [e.strip().upper() for e in args.etfs.split(",") if e.strip()]
+    return list(dict.fromkeys(DEFAULT_ETF_UNIVERSE))
+
+
+def _cmd_qualify(args: argparse.Namespace) -> int:
+    from equity_analyst.committee.consensus import compute_consensus
+    from equity_analyst.config import get_settings
+    from equity_analyst.digest import Qualification, build_qualify_report, check_bar
+    from equity_analyst.session import load_packet, load_session_verdicts
+
+    settings = get_settings()
+    quals = []
+    worst = 0
+    for ticker in args.tickers:
+        try:
+            packet = load_packet(settings.runs_dir, ticker, args.as_of)
+            verdicts, pm, _failures = load_session_verdicts(packet)
+            quals.append(check_bar(packet["ticker"], pm, compute_consensus(verdicts)))
+        except (FileNotFoundError, ValueError) as exc:
+            # A ticker that fails to load is a visible ✗ row with the reason and
+            # a non-zero exit — not a silent absence the operator misreads as
+            # "not yet committee'd".
+            quals.append(
+                Qualification(
+                    ticker=ticker.upper(),
+                    qualifies=False,
+                    reasons=[f"session could not be loaded: {exc}"],
+                )
+            )
+            worst = 1
+    if not quals:
+        return 1
+    print(build_qualify_report(quals, need=args.need))
+    return worst
+
+
+def _cmd_etf_strategy(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.data.yahoo import YahooDataSource
+    from equity_analyst.etf_exposure import fetch_holdings, fetch_profiles
+    from equity_analyst.etf_strategy import (
+        basket_correlations,
+        build_basket,
+        build_strategy_report,
+        fetch_stats,
+    )
+
+    candidates = _screen_candidates(args)
+    if isinstance(candidates, int):
+        return candidates
 
     settings = get_settings()
     settings.ensure_dirs()
     data_source = YahooDataSource()
-    holdings, _failures = fetch_holdings(
-        universe, data_source=data_source, delay=args.delay, progress=_progress(args)
+    holdings, failures = fetch_holdings(
+        _etf_universe(args), data_source=data_source, delay=args.delay, progress=_progress(args)
     )
     picks, uncovered = build_basket(candidates, holdings, max_etfs=args.max_etfs)
     if not picks:
@@ -647,7 +655,7 @@ def _cmd_etf_strategy(args: argparse.Namespace) -> int:
         candidates=candidates,
         uncovered=uncovered,
         correlations=basket_correlations(stats),
-        swept=len(holdings),
+        swept=len(holdings) + len(failures),
         as_of=as_of,
         descriptions=descriptions,
     )
@@ -671,12 +679,17 @@ def _cmd_digest(args: argparse.Namespace) -> int:
     settings.ensure_dirs()
 
     entries = []
+    excluded: list[tuple[str, str]] = []
     for ticker in args.tickers:
         try:
             packet = load_packet(settings.runs_dir, ticker, args.as_of)
             verdicts, pm, _failures = load_session_verdicts(packet)
         except (FileNotFoundError, ValueError) as exc:
+            # Disclosed inside the digest itself, not just on stdout — the
+            # saved/emailed document must never silently present itself as
+            # complete while missing a qualifier.
             print(f"error: {exc}")
+            excluded.append((ticker.upper(), str(exc)))
             continue
         entries.append({"packet": packet, "verdicts": verdicts, "pm": pm})
     if not entries:
@@ -700,7 +713,6 @@ def _cmd_digest(args: argparse.Namespace) -> int:
     elif not args.no_etf:
         from equity_analyst.data.yahoo import YahooDataSource
         from equity_analyst.etf_exposure import (
-            DEFAULT_ETF_UNIVERSE,
             build_exposure,
             build_exposure_report,
             fetch_holdings,
@@ -709,11 +721,9 @@ def _cmd_digest(args: argparse.Namespace) -> int:
 
         tickers = [e["packet"]["ticker"] for e in entries]
         data_source = YahooDataSource()
+        universe = _etf_universe(args)
         holdings, failures = fetch_holdings(
-            list(dict.fromkeys(DEFAULT_ETF_UNIVERSE)),
-            data_source=data_source,
-            delay=args.delay,
-            progress=_progress(args),
+            universe, data_source=data_source, delay=args.delay, progress=_progress(args)
         )
         exposures = build_exposure(tickers, holdings)
         etf_section = build_exposure_report(
@@ -722,6 +732,7 @@ def _cmd_digest(args: argparse.Namespace) -> int:
             top=10,
             failures=failures,
             as_of=date.today().isoformat(),
+            swept=len(holdings) + len(failures),
             descriptions=fetch_profiles(
                 [e.etf for e in exposures[:10]],
                 data_source=data_source,
@@ -732,14 +743,18 @@ def _cmd_digest(args: argparse.Namespace) -> int:
 
     as_of = date.today().isoformat()
     digest_md = build_digest(
-        entries, as_of=as_of, exec_summary=exec_summary, etf_section=etf_section
+        entries,
+        as_of=as_of,
+        exec_summary=exec_summary,
+        etf_section=etf_section,
+        excluded=excluded,
     )
     print(digest_md)
     if not args.no_save:
         out_path = settings.outputs_dir / f"digest-{as_of}.md"
         out_path.write_text(digest_md, encoding="utf-8")
         print(f"\n[saved to {out_path}]")
-    return 0
+    return 1 if excluded else 0
 
 
 def _cmd_levels(args: argparse.Namespace) -> int:
@@ -767,19 +782,13 @@ def _cmd_etf_exposure(args: argparse.Namespace) -> int:
     from datetime import date
 
     from equity_analyst.data.yahoo import YahooDataSource
-    from equity_analyst.etf_exposure import (
-        DEFAULT_ETF_UNIVERSE,
-        build_exposure,
-        build_exposure_report,
-        fetch_holdings,
-    )
+    from equity_analyst.etf_exposure import build_exposure, build_exposure_report, fetch_holdings
 
-    if args.etfs:
-        universe = [e.strip().upper() for e in args.etfs.split(",") if e.strip()]
-    else:
-        universe = list(dict.fromkeys(DEFAULT_ETF_UNIVERSE))
     holdings, failures = fetch_holdings(
-        universe, data_source=YahooDataSource(), delay=args.delay, progress=_progress(args)
+        _etf_universe(args),
+        data_source=YahooDataSource(),
+        delay=args.delay,
+        progress=_progress(args),
     )
     exposures = build_exposure(args.tickers, holdings)
     print(
@@ -789,6 +798,7 @@ def _cmd_etf_exposure(args: argparse.Namespace) -> int:
             top=args.top,
             failures=failures,
             as_of=date.today().isoformat(),
+            swept=len(holdings) + len(failures),
         )
     )
     return 0
@@ -812,9 +822,7 @@ def _cmd_notify(args: argparse.Namespace) -> int:
         else "Equity-analyst run complete. See attached report(s)."
     )
     try:
-        send_email(
-            settings.smtp, subject=args.subject, body=body, attachments=attachments
-        )
+        send_email(settings.smtp, subject=args.subject, body=body, attachments=attachments)
     except EmailNotConfigured as exc:
         print(f"error: {exc}")
         return 2

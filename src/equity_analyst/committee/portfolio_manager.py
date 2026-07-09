@@ -64,6 +64,18 @@ class PMSynthesis:
     key_risks: list[str] = field(default_factory=list)
     horizon_fit: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # Mirror Verdict's validation: in keyless mode this payload arrives via
+        # `submit-verdict`, which promises schema mistakes surface immediately —
+        # an out-of-range rating or capitalized conviction must fail here, not
+        # as a KeyError at report time (or a silent disqualification in the bar).
+        if self.rating not in RATING_LABELS:
+            raise ValueError(f"PM rating {self.rating!r} out of range −2…+2")
+        if self.conviction not in ("low", "medium", "high"):
+            raise ValueError(
+                f"PM conviction {self.conviction!r} not one of ('low', 'medium', 'high')"
+            )
+
     @property
     def rating_label(self) -> str:
         return RATING_LABELS[self.rating]
@@ -99,17 +111,14 @@ def pm_from_parsed(parsed: dict) -> PMSynthesis:
     )
 
 
-def build_pm_prompt(
-    ticker: str, verdicts: list[Verdict], consensus: ConsensusSummary
-) -> str:
+def build_pm_prompt(ticker: str, verdicts: list[Verdict], consensus: ConsensusSummary) -> str:
     lines = [
         f"Ticker under review: {ticker}",
         "",
         "MECHANICAL AGREEMENT SUMMARY (deterministic, for context only):",
         f"  {consensus.headline}",
         f"  Vote split: {consensus.counts}",
-        f"  Conviction-weighted blended score: {consensus.blended_score:+.2f} "
-        f"(−2…+2 scale)",
+        f"  Conviction-weighted blended score: {consensus.blended_score:+.2f} (−2…+2 scale)",
         "",
         "ANALYST VERDICTS (each reached independently):",
     ]

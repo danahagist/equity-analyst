@@ -56,9 +56,19 @@ def apply_veto(candidate: RankedCandidate, packet: dict) -> RankedCandidate:
     """Apply the skill-gated forecast veto to one candidate, in place.
 
     Demotes only on evidence the backtest validated; annotates everything else.
+    A malformed packet (no usable price) disables the veto for that name rather
+    than crashing the whole queue — the walk-down must survive one bad packet.
     """
-    last_price = float(packet["last_price"])
-    rows = {r["label"]: r for r in packet.get("forecast_rows", []) if r["label"] in VETO_HORIZONS}
+    raw_price = packet.get("last_price")
+    if raw_price is None or float(raw_price) <= 0:
+        candidate.notes.append("packet has no usable last price — veto pass skipped")
+        return candidate
+    last_price = float(raw_price)
+    rows = {
+        r["label"]: r
+        for r in packet.get("forecast_rows", [])
+        if r.get("label") in VETO_HORIZONS and r.get("point") is not None
+    }
 
     skilled = {label: r for label, r in rows.items() if r.get("beats_baseline")}
     if not skilled:
@@ -66,22 +76,25 @@ def apply_veto(candidate: RankedCandidate, packet: dict) -> RankedCandidate:
 
     for label, row in sorted(skilled.items()):
         expected = (float(row["point"]) - last_price) / last_price
-        if expected < -FLAT_BAND and label in NEGATIVE_VETO_HORIZONS:
+        # Two independent questions, asked in order: which side of the flat
+        # band, then (for material negatives) whether this horizon may demote.
+        if abs(expected) <= FLAT_BAND:
+            candidate.notes.append(
+                f"skilled {label} signal ≈ flat ({expected:+.1%}) — no forecast "
+                "support, but flat is not bearish; no veto"
+            )
+        elif expected > FLAT_BAND:
+            candidate.notes.append(f"skilled {label} signal: {expected:+.1%} (supportive)")
+        elif label in NEGATIVE_VETO_HORIZONS:
             candidate.vetoed = True
             candidate.veto_reasons.append(
                 f"skilled {label} model ({row.get('model', '?')}) shows "
                 f"{expected:+.1%} expected return — the validated signal is negative"
             )
-        elif expected > FLAT_BAND:
-            candidate.notes.append(f"skilled {label} signal: {expected:+.1%} (supportive)")
-        elif abs(expected) <= FLAT_BAND:
+        else:
             candidate.notes.append(
-                f"skilled {label} signal ≈ flat ({expected:+.1%}) — no forecast "
-                "support, but flat is not bearish; no veto"
-            )
-        else:  # negative beyond the band at a horizon that cannot demote (1w)
-            candidate.notes.append(
-                f"skilled {label} signal: {expected:+.1%} (cautionary; 1w cannot demote)"
+                f"skilled {label} signal: {expected:+.1%} (cautionary; {label} is too "
+                "short a horizon to demote)"
             )
 
     return candidate
@@ -107,33 +120,47 @@ def build_queue(
             apply_veto(cand, packet)
         queue.append(cand)
 
-    order = {c.ticker: i for i, c in enumerate(queue)}
-    queue.sort(key=lambda c: (c.vetoed, order[c.ticker]))
+    queue.sort(key=lambda c: c.vetoed)  # stable: preserves blended-rank order within groups
     return queue
 
 
 def read_screen_csv(path: Path, *, top: int) -> list[tuple[str, float | None]]:
-    """Top-N (ticker, blended) pairs from a `screen` CSV, in rank order."""
+    """Top-N (ticker, blended) pairs from a `screen` CSV, in rank order.
+
+    Raises ValueError when the file lacks the screen's columns — a renamed
+    column must fail loudly, not silently degrade every score to None (which
+    would reduce the walk-down to CSV row order while looking like a success).
+    """
     with path.open(encoding="utf-8", newline="") as handle:
-        rows = list(csv.DictReader(handle))
+        reader = csv.DictReader(handle)
+        fields = reader.fieldnames or []
+        if "ticker" not in fields or "blended" not in fields:
+            raise ValueError(
+                f"{path} does not look like a `screen` CSV (needs 'ticker' and "
+                f"'blended' columns; found {fields})"
+            )
+        rows = list(reader)
     out: list[tuple[str, float | None]] = []
     for row in rows[:top]:
         try:
             blended = float(row["blended"])
-        except (KeyError, TypeError, ValueError):
-            blended = None
+        except (TypeError, ValueError):
+            blended = None  # a single blank cell degrades one row, not the file
         out.append((row["ticker"].upper(), blended))
     return out
 
 
 def build_rank_report(queue: list[RankedCandidate], *, as_of: str) -> str:
+    from equity_analyst.digest import BAR_DESCRIPTION
+
     lines = [
         f"# Committee walk-down queue ({as_of})",
         "",
         "_Ordered by the blended screen score. The forecast never promotes a name; "
-        "it can only demote via a **skill-gated veto**: a 1m/1y horizon that beat the "
-        "naive baseline in backtest showing a materially negative expected return "
-        "(beyond the ±1% flat band — skilled-flat annotates, it does not veto). "
+        "it can only demote via a **skill-gated veto**: a "
+        f"{'/'.join(NEGATIVE_VETO_HORIZONS)} horizon that beat the naive baseline "
+        "in backtest showing a materially negative expected return (beyond the "
+        f"±{FLAT_BAND:.0%} flat band — skilled-flat annotates, it does not veto). "
         "Demoted names sink to the bottom with the reason shown — they are not "
         "hidden. Not financial advice._",
         "",
@@ -148,8 +175,7 @@ def build_rank_report(queue: list[RankedCandidate], *, as_of: str) -> str:
     lines += [
         "",
         "Walk-down: run the committee one name at a time in this order until 5 names "
-        "clear the bar (PM Buy or better, medium+ conviction, no split committee — "
-        "check with `equity-analyst qualify`).",
+        f"clear the bar ({BAR_DESCRIPTION} — check with `equity-analyst qualify`).",
     ]
     if any(c.vetoed for c in queue):
         lines += [

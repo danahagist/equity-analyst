@@ -28,6 +28,11 @@ from equity_analyst.levels import LevelPlan, plan_from_packet
 
 _QUALIFYING_CONVICTIONS = ("medium", "high")
 
+# The single prose statement of the bar. Every report that describes the bar
+# (rank footer, qualify header, digest methodology) renders this string, so
+# tightening check_bar and this line together is one edit, not a doc hunt.
+BAR_DESCRIPTION = "PM Buy or better, medium+ conviction, committee not split"
+
 
 @dataclass(frozen=True)
 class Qualification:
@@ -56,8 +61,7 @@ def build_qualify_report(quals: list[Qualification], *, need: int) -> str:
     lines = [
         "# Walk-down qualification check",
         "",
-        f"Bar: PM Buy or better, medium+ conviction, committee not split. "
-        f"Qualified so far: **{len(qualified)} of {need} needed**.",
+        f"Bar: {BAR_DESCRIPTION}. Qualified so far: **{len(qualified)} of {need} needed**.",
         "",
     ]
     for q in quals:
@@ -72,6 +76,8 @@ def build_qualify_report(quals: list[Qualification], *, need: int) -> str:
             if remaining > 0
             else "Bar met — stop the walk-down and build the digest."
         ),
+        "",
+        "_Research assistance, not financial advice._",
     ]
     return "\n".join(lines)
 
@@ -91,16 +97,27 @@ def extract_bottom_line(writeup: str) -> str | None:
     return extract_section(writeup, "Bottom Line")
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+
+
 def first_sentences(text: str, n: int = 2, max_chars: int = 450) -> str:
-    """The first ``n`` sentences of a text, hard-capped at ``max_chars``."""
+    """The first ``n`` sentences of a text, hard-capped at ``max_chars``.
+
+    A sentence ends at ./!/? followed by a capitalized word — so the corporate
+    abbreviations that saturate this corpus ("Apple Inc. designs…") don't burn
+    a sentence each.
+    """
     flat = " ".join((text or "").split())
-    parts = flat.split(". ")
-    out = ". ".join(parts[:n])
-    if len(parts) > n and not out.endswith("."):
-        out += "."
+    parts = _SENTENCE_END.split(flat)
+    out = " ".join(parts[:n])
     if len(out) > max_chars:
         out = out[: max_chars - 1].rsplit(" ", 1)[0] + "…"
     return out
+
+
+def _demote_headings(markdown: str, levels: int = 2) -> str:
+    """Push every markdown heading down so embedded reports nest under a section."""
+    return re.sub(r"(?m)^(#+)(?=\s)", "#" * levels + r"\1", markdown.strip())
 
 
 def _fmt_cap(value) -> str:
@@ -108,10 +125,12 @@ def _fmt_cap(value) -> str:
         cap = float(value)
     except (TypeError, ValueError):
         return "—"
+    sign = "-" if cap < 0 else ""
+    cap = abs(cap)
     for threshold, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M")):
         if cap >= threshold:
-            return f"${cap / threshold:,.1f}{suffix}"
-    return f"${cap:,.0f}"
+            return f"{sign}${cap / threshold:,.1f}{suffix}"
+    return f"{sign}${cap:,.0f}"
 
 
 def _ticker_section(
@@ -120,10 +139,12 @@ def _ticker_section(
     pm: PMSynthesis | None,
     consensus: ConsensusSummary,
     plan: LevelPlan | None,
+    qual: Qualification,
 ) -> list[str]:
     ticker = packet["ticker"]
     fundamentals = packet.get("fundamentals") or {}
-    qual = check_bar(ticker, pm, consensus)
+    last_price = packet.get("last_price")
+    price_text = f"${float(last_price):,.2f}" if last_price is not None else "price unavailable"
 
     call = f"{pm.rating_label} ({pm.conviction} conviction, {pm.horizon})" if pm else "no PM call"
     lines = [
@@ -131,7 +152,7 @@ def _ticker_section(
         "",
         f"_{fundamentals.get('longName', ticker)} · {fundamentals.get('sector', '—')} · "
         f"{_fmt_cap(fundamentals.get('marketCap'))} · "
-        f"${float(packet['last_price']):,.2f} (as of {packet['as_of']})_",
+        f"{price_text} (as of {packet['as_of']})_",
         "",
         f"**Committee:** {consensus.headline} "
         f"Blended {consensus.blended_score:+.2f} ({consensus.agreement_level}). "
@@ -209,11 +230,14 @@ def build_digest(
     as_of: str,
     exec_summary: str | None = None,
     etf_section: str | None = None,
+    excluded: list[tuple[str, str]] | None = None,
 ) -> str:
     """Render the combined digest.
 
     Each entry: ``{"packet": .., "verdicts": [Verdict], "pm": PMSynthesis|None}``
     (consensus and levels are derived here so every section uses one source).
+    ``excluded`` lists (ticker, reason) pairs whose sessions could not be
+    loaded — disclosed in the document, never silently dropped.
     """
     lines = [
         f"# Weekly committee digest — {as_of}",
@@ -225,7 +249,9 @@ def build_digest(
         "",
         "## Executive summary",
         "",
-        exec_summary.strip() if exec_summary else EXEC_SUMMARY_PLACEHOLDER,
+        # The summary is authored text from a standalone file — demote any
+        # headings it opens with so it can't fork the document hierarchy.
+        _demote_headings(exec_summary) if exec_summary else EXEC_SUMMARY_PLACEHOLDER,
         "",
         "## The shortlist at a glance",
         "",
@@ -241,8 +267,8 @@ def build_digest(
             plan = plan_from_packet(packet)
         except ValueError:
             plan = None
-        prepared.append((packet, verdicts, pm, consensus, plan))
         qual = check_bar(packet["ticker"], pm, consensus)
+        prepared.append((packet, verdicts, pm, consensus, plan, qual))
         lines.append(
             f"| {packet['ticker']} | {pm.rating_label if pm else '—'} "
             f"| {pm.conviction if pm else '—'} | {consensus.leaning} "
@@ -250,21 +276,27 @@ def build_digest(
         )
     lines.append("")
 
-    for packet, verdicts, pm, consensus, plan in prepared:
-        lines += _ticker_section(packet, verdicts, pm, consensus, plan)
+    if excluded:
+        lines += [
+            "> ⚠️ **Excluded from this digest** (session could not be loaded — the "
+            "document is incomplete without them): "
+            + "; ".join(f"**{t}** ({reason})" for t, reason in excluded),
+            "",
+        ]
+
+    for packet, verdicts, pm, consensus, plan, qual in prepared:
+        lines += _ticker_section(packet, verdicts, pm, consensus, plan, qual)
 
     if etf_section:
-        # The standalone exposure report opens with an H1; demote headings so
-        # the embedded copy nests under this H2 instead of fighting the digest.
-        embedded = re.sub(r"(?m)^#(?=#*\s)", "###", etf_section.strip())
-        lines += ["## Broader exposure via ETFs", "", embedded, ""]
+        # Standalone reports open with their own H1; nest them under this H2.
+        lines += ["## Broader exposure via ETFs", "", _demote_headings(etf_section), ""]
 
     lines += [
         "## Methodology",
         "",
         "- Shortlist selection: blended screen score orders the walk-down; the "
         "forecast can only demote via a skill-gated veto, never promote. Names "
-        "qualify on: PM Buy or better, medium+ conviction, committee not split.",
+        f"qualify on: {BAR_DESCRIPTION}.",
         "- Levels derive from the forecast's calibrated 80% intervals; where a "
         "horizon didn't beat naive drift the band is a volatility range, not a "
         "directional call.",

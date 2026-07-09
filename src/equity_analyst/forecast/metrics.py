@@ -22,9 +22,7 @@ def coverage(y: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> float:
     return float(np.mean((y >= lower) & (y <= upper)))
 
 
-def interval_score(
-    y: np.ndarray, lower: np.ndarray, upper: np.ndarray, *, level: int
-) -> float:
+def interval_score(y: np.ndarray, lower: np.ndarray, upper: np.ndarray, *, level: int) -> float:
     """Winkler/interval score for a central prediction interval. Lower is better.
 
     ``level`` is the nominal coverage percent (e.g. 80), so alpha = 1 - level/100.

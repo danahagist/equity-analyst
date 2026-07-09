@@ -43,7 +43,9 @@ def test_load_prices_empty_for_unknown_ticker() -> None:
 def test_fundamentals_round_trip() -> None:
     conn = connect(":memory:")
     assert load_latest_fundamentals(conn, "TEST") is None
-    save_fundamentals(conn, "TEST", {"marketCap": 123, "sector": "Tech"}, as_of="2026-07-08T00:00:00")
+    save_fundamentals(
+        conn, "TEST", {"marketCap": 123, "sector": "Tech"}, as_of="2026-07-08T00:00:00"
+    )
     save_fundamentals(conn, "TEST", {"marketCap": 456}, as_of="2026-07-08T12:00:00")
     latest = load_latest_fundamentals(conn, "TEST")
     assert latest == {"marketCap": 456}  # most recent snapshot wins

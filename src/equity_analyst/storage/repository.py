@@ -46,8 +46,7 @@ def upsert_prices(conn: sqlite3.Connection, ticker: str, prices: pd.DataFrame) -
 def load_prices(conn: sqlite3.Connection, ticker: str) -> pd.DataFrame:
     """Return stored bars for ``ticker`` as the canonical tidy frame (may be empty)."""
     cur = conn.execute(
-        "SELECT date, open, high, low, close, volume "
-        "FROM price_bar WHERE ticker = ? ORDER BY date",
+        "SELECT date, open, high, low, close, volume FROM price_bar WHERE ticker = ? ORDER BY date",
         (ticker,),
     )
     frame = pd.DataFrame(cur.fetchall(), columns=["date", *PRICE_COLUMNS[1:]])
@@ -92,8 +91,16 @@ def save_run(
         "INSERT OR REPLACE INTO committee_run (ticker, as_of, created_at, pm_rating, "
         "pm_conviction, consensus_leaning, blended_score, report_md) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (ticker, as_of, created_at, pm_rating, pm_conviction, consensus_leaning,
-         float(blended_score), report_md),
+        (
+            ticker,
+            as_of,
+            created_at,
+            pm_rating,
+            pm_conviction,
+            consensus_leaning,
+            float(blended_score),
+            report_md,
+        ),
     )
     conn.commit()
 
@@ -105,9 +112,19 @@ def save_forecast_rows(conn: sqlite3.Connection, ticker: str, as_of: str, rows: 
         "point, lower, upper, interval_level, beats_baseline, n_windows) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
-            (ticker, as_of, r["label"], r["target_date"], r["model"], r["point"],
-             r["lower"], r["upper"], r["interval_level"], int(r["beats_baseline"]),
-             r["n_windows"])
+            (
+                ticker,
+                as_of,
+                r["label"],
+                r["target_date"],
+                r["model"],
+                r["point"],
+                r["lower"],
+                r["upper"],
+                r["interval_level"],
+                int(r["beats_baseline"]),
+                r["n_windows"],
+            )
             for r in rows
         ],
     )

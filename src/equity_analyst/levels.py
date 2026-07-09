@@ -61,7 +61,13 @@ def _pick(rows: dict[str, dict], order: tuple[str, ...]) -> dict | None:
 
 
 def plan_from_packet(packet: dict) -> LevelPlan:
-    """Build a :class:`LevelPlan` from a prep packet (last_price + forecast_rows)."""
+    """Build a :class:`LevelPlan` from a prep packet (last_price + forecast_rows).
+
+    Raises ValueError for any malformed packet (missing/None price, no rows) so
+    callers have one exception type for "this packet can't produce levels".
+    """
+    if packet.get("last_price") is None:
+        raise ValueError(f"{packet.get('ticker')}: packet has no last price")
     last_price = float(packet["last_price"])
     rows = {r["label"]: r for r in packet.get("forecast_rows", [])}
     if not rows:

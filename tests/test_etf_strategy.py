@@ -132,3 +132,27 @@ def test_strategy_report_carries_the_honesty_block() -> None:
     assert "not a Sharpe ratio" in report
     assert "## Not covered (1 of 2)" in report and "ZZZ" in report
     assert "not financial advice" in report
+
+
+def test_unscored_extra_ticker_does_not_dominate_scored_names() -> None:
+    # An explicitly-passed ticker with no screen score must not be treated as
+    # a perfect 1.0 percentile; it gets the mean of the real scores.
+    candidates = [("EXTRA", None), ("TOP", 0.9), ("MID", 0.5)]
+    holdings = {"FUND_TOP": {"TOP": 0.1}, "FUND_EXTRA": {"EXTRA": 0.1}}
+    picks, _ = build_basket(candidates, holdings, max_etfs=1)
+    assert picks[0].etf == "FUND_TOP"  # 0.9 beats the mean-imputed 0.7
+
+
+def test_all_zero_scores_do_not_crash_the_report() -> None:
+    candidates = [("AAA", 0.0)]
+    picks, uncovered = build_basket(candidates, {"F": {"AAA": 0.1}}, max_etfs=1)
+    report = build_strategy_report(
+        picks,
+        [],
+        candidates=candidates,
+        uncovered=uncovered,
+        correlations=[],
+        swept=1,
+        as_of="2026-07-08",
+    )
+    assert "covers **1 of 1** screened names via their top holdings" in report

@@ -138,3 +138,25 @@ def test_read_screen_csv_takes_top_rows(tmp_path) -> None:
     path = tmp_path / "screen.csv"
     path.write_text("rank,ticker,blended\n1,aaa,0.91\n2,BBB,0.85\n3,CCC,0.80\n", encoding="utf-8")
     assert read_screen_csv(path, top=2) == [("AAA", 0.91), ("BBB", 0.85)]
+
+
+def test_packet_without_price_skips_veto_instead_of_crashing() -> None:
+    # pipeline stores last_price=None when the price frame is empty — one bad
+    # packet must not take down the whole walk-down queue.
+    cand = apply_veto(
+        RankedCandidate("X", 0.5),
+        _packet([_row("1y", 97.0, 70, 125, beats=True)], last_price=None),
+    )
+    assert not cand.vetoed
+    assert any("no usable last price" in n for n in cand.notes)
+
+
+def test_read_screen_csv_rejects_foreign_csv(tmp_path) -> None:
+    path = tmp_path / "other.csv"
+    path.write_text("symbol,score\nAAA,0.9\n", encoding="utf-8")
+    try:
+        read_screen_csv(path, top=5)
+    except ValueError as exc:
+        assert "does not look like a `screen` CSV" in str(exc)
+    else:
+        raise AssertionError("expected ValueError for a non-screen CSV")

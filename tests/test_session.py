@@ -34,15 +34,26 @@ def _prep(tmp_path, conn=None):
 def _write_verdicts(path, seats=("Fundamental", "News/Social", "Research"), pm=True):
     doc = {
         "verdicts": [
-            {"analyst": seat, "rating": 1, "conviction": "medium", "horizon": "1y",
-             "evidence": f"{seat} key points", "writeup": f"{seat} full writeup"}
+            {
+                "analyst": seat,
+                "rating": 1,
+                "conviction": "medium",
+                "horizon": "1y",
+                "evidence": f"{seat} key points",
+                "writeup": f"{seat} full writeup",
+            }
             for seat in seats
         ]
     }
     if pm:
-        doc["pm"] = {"rating": 1, "conviction": "medium", "horizon": "6-12mo",
-                     "synthesis": "Constructive.", "key_risks": ["macro"],
-                     "horizon_fit": ["1w: no edge", "1m: hold", "1y: buy"]}
+        doc["pm"] = {
+            "rating": 1,
+            "conviction": "medium",
+            "horizon": "6-12mo",
+            "synthesis": "Constructive.",
+            "key_risks": ["macro"],
+            "horizon_fit": ["1w: no edge", "1m: hold", "1y: buy"],
+        }
     path.write_text(json.dumps(doc))
 
 
@@ -81,10 +92,13 @@ def test_full_session_round_trip(tmp_path) -> None:
     assert "PORTFOLIO MANAGER BRIEFING" in briefing
     assert "Fundamental full writeup" in briefing  # PM sees the writeups
 
-    run = finalize_run(packet, output_dir=tmp_path / "out", conn=conn,
-                       now="2026-07-08T00:00:00Z")
-    assert [v.analyst for v in run.verdicts] == \
-        ["Technical", "Fundamental", "News/Social", "Research"]
+    run = finalize_run(packet, output_dir=tmp_path / "out", conn=conn, now="2026-07-08T00:00:00Z")
+    assert [v.analyst for v in run.verdicts] == [
+        "Technical",
+        "Fundamental",
+        "News/Social",
+        "Research",
+    ]
     assert run.failures == []
     assert run.pm.synthesis == "Constructive."
     assert run.output_path is not None and run.output_path.exists()
@@ -116,17 +130,39 @@ def test_invalid_verdicts_fail_loudly(tmp_path) -> None:
     result = _prep(tmp_path)
     packet = load_packet(tmp_path / "runs", "TEST")
 
-    result.verdicts_path.write_text(json.dumps(
-        {"verdicts": [{"analyst": "Fundamental", "rating": 9, "conviction": "medium",
-                       "horizon": "1y", "evidence": "x"}]}
-    ))
+    result.verdicts_path.write_text(
+        json.dumps(
+            {
+                "verdicts": [
+                    {
+                        "analyst": "Fundamental",
+                        "rating": 9,
+                        "conviction": "medium",
+                        "horizon": "1y",
+                        "evidence": "x",
+                    }
+                ]
+            }
+        )
+    )
     with pytest.raises(ValueError, match="invalid verdict for Fundamental"):
         finalize_run(packet)
 
-    result.verdicts_path.write_text(json.dumps(
-        {"verdicts": [{"analyst": "Quant", "rating": 1, "conviction": "medium",
-                       "horizon": "1y", "evidence": "x"}]}
-    ))
+    result.verdicts_path.write_text(
+        json.dumps(
+            {
+                "verdicts": [
+                    {
+                        "analyst": "Quant",
+                        "rating": 1,
+                        "conviction": "medium",
+                        "horizon": "1y",
+                        "evidence": "x",
+                    }
+                ]
+            }
+        )
+    )
     with pytest.raises(ValueError, match="unknown analyst"):
         finalize_run(packet)
 
@@ -140,8 +176,13 @@ def test_load_packet_missing_gives_actionable_error(tmp_path) -> None:
 
 
 def _seat_payload(**overrides):
-    payload = {"rating": 1, "conviction": "medium", "horizon": "1y",
-               "evidence": "key points", "writeup": "full writeup"}
+    payload = {
+        "rating": 1,
+        "conviction": "medium",
+        "horizon": "1y",
+        "evidence": "key points",
+        "writeup": "full writeup",
+    }
     payload.update(overrides)
     return payload
 
@@ -154,11 +195,18 @@ def test_submit_verdict_seat_and_pm_roundtrip(tmp_path) -> None:
 
     for seat in ("Fundamental", "News/Social", "Research"):
         path = submit_verdict(packet, analyst=seat, payload=_seat_payload())
-    submit_verdict(packet, analyst="PM", payload={
-        "rating": 0, "conviction": "medium", "horizon": "1y",
-        "synthesis": "Balanced.", "key_risks": ["valuation"],
-        "horizon_fit": ["1w: no view", "1m: hold", "1y: hold"],
-    })
+    submit_verdict(
+        packet,
+        analyst="PM",
+        payload={
+            "rating": 0,
+            "conviction": "medium",
+            "horizon": "1y",
+            "synthesis": "Balanced.",
+            "key_risks": ["valuation"],
+            "horizon_fit": ["1w: no view", "1m: hold", "1y: hold"],
+        },
+    )
 
     assert path == result.verdicts_path
     run = finalize_run(packet)
