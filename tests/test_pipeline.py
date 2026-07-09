@@ -23,14 +23,36 @@ _FAST_ENGINE = ForecastEngine(config=EngineConfig(max_windows=4, use_ml=False))
 
 
 def _llm() -> FakeLLMClient:
-    return FakeLLMClient(verdicts={
-        ROLE_FUNDAMENTAL: {"rating": 1, "conviction": "high", "horizon": "1y", "evidence": "moat"},
-        ROLE_NEWS_SOCIAL: {"rating": 1, "conviction": "medium", "horizon": "1mo", "evidence": "news"},
-        ROLE_RESEARCH: {"rating": 2, "conviction": "medium", "horizon": "1y", "evidence": "targets"},
-        ROLE_PORTFOLIO_MANAGER: {"rating": 1, "conviction": "high", "horizon": "6-12mo",
-                                 "synthesis": "Constructive.", "key_risks": ["macro"],
-                                 "horizon_fit": ["1w: no edge", "1m: hold", "1y: buy"]},
-    })
+    return FakeLLMClient(
+        verdicts={
+            ROLE_FUNDAMENTAL: {
+                "rating": 1,
+                "conviction": "high",
+                "horizon": "1y",
+                "evidence": "moat",
+            },
+            ROLE_NEWS_SOCIAL: {
+                "rating": 1,
+                "conviction": "medium",
+                "horizon": "1mo",
+                "evidence": "news",
+            },
+            ROLE_RESEARCH: {
+                "rating": 2,
+                "conviction": "medium",
+                "horizon": "1y",
+                "evidence": "targets",
+            },
+            ROLE_PORTFOLIO_MANAGER: {
+                "rating": 1,
+                "conviction": "high",
+                "horizon": "6-12mo",
+                "synthesis": "Constructive.",
+                "key_risks": ["macro"],
+                "horizon_fit": ["1w: no edge", "1m: hold", "1y: buy"],
+            },
+        }
+    )
 
 
 def test_run_committee_end_to_end(tmp_path) -> None:
@@ -47,8 +69,12 @@ def test_run_committee_end_to_end(tmp_path) -> None:
 
     # Four verdicts (Technical + 3 LLM), no failures.
     assert result.ticker == "TEST"
-    assert [v.analyst for v in result.verdicts] == \
-        ["Technical", "Fundamental", "News/Social", "Research"]
+    assert [v.analyst for v in result.verdicts] == [
+        "Technical",
+        "Fundamental",
+        "News/Social",
+        "Research",
+    ]
     assert result.failures == []
     assert result.pm.rating == 1
 

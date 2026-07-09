@@ -129,9 +129,7 @@ class ForecastEngine:
         forecast = sf.forecast(df=series, h=max_h, level=[cfg.interval_level])
 
         if cfg.use_ml:
-            ml = self._run_ml(
-                series, max_h=max_h, feasible_h=feasible_h, n_windows=n_windows
-            )
+            ml = self._run_ml(series, max_h=max_h, feasible_h=feasible_h, n_windows=n_windows)
             if ml is not None:
                 ml_backtest, ml_forecast = ml
                 if backtest is not None and ml_backtest is not None:
@@ -289,10 +287,7 @@ class ForecastEngine:
                     had_candidates = True
                     m_c = self._metrics_on(paired, name, level)
                     m_b = self._metrics_on(paired, BASELINE_NAME, level)
-                    if (
-                        m_c["mae"] < m_b["mae"]
-                        and m_c["interval_score"] <= m_b["interval_score"]
-                    ):
+                    if m_c["mae"] < m_b["mae"] and m_c["interval_score"] <= m_b["interval_score"]:
                         m_c["skill_ratio"] = metrics.skill_ratio(m_c["mae"], m_b["mae"])
                         qualified[name] = m_c
                 if qualified:

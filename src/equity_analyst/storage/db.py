@@ -41,6 +41,23 @@ CREATE TABLE IF NOT EXISTS committee_run (
     PRIMARY KEY (ticker, as_of)
 );
 
+-- One row per screened ticker per screen date: the funnel's entry point of
+-- record, so weekly rankings can later be joined against forecasts and
+-- committee runs (the CSV in outputs/ is an export layer, not the store).
+CREATE TABLE IF NOT EXISTS screen_result (
+    ticker        TEXT    NOT NULL,
+    as_of         TEXT    NOT NULL,    -- ISO screen date
+    rank          INTEGER NOT NULL,    -- 1 = best that day
+    blended       REAL,
+    street_score  REAL,
+    garp_score    REAL,
+    target_upside REAL,
+    price         REAL,
+    name          TEXT,
+    sector        TEXT,
+    PRIMARY KEY (ticker, as_of)
+);
+
 -- Per-horizon forecast, kept so forecast-vs-actual skill can be checked later.
 CREATE TABLE IF NOT EXISTS forecast (
     ticker         TEXT NOT NULL,

@@ -24,11 +24,10 @@ from __future__ import annotations
 
 import csv
 import re
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from equity_analyst.data.base import MarketDataSource
+from equity_analyst.data.base import MarketDataSource, fetch_many
 
 BLEND = {"street": 0.5, "garp": 0.5}
 MIN_ANALYSTS = 5  # below this, target/recommendation fields are too thin to trust
@@ -161,33 +160,28 @@ def run_screen(
     Fetch failures are recorded and skipped — with an unofficial provider at
     universe scale, partial coverage is the normal case and must be disclosed.
     """
-    from equity_analyst.data.yahoo import DataUnavailable
 
-    rows: list[ScreenRow] = []
-    failures: list[tuple[str, str]] = []
-    for i, raw in enumerate(tickers):
-        ticker = raw.upper()
-        if progress and (i % 25 == 0 or i == len(tickers) - 1):
-            progress(f"screening {i + 1}/{len(tickers)} ({ticker})")
-        try:
-            fundamentals = data_source.get_fundamentals(ticker)
-            analyst_info = data_source.get_analyst_info(ticker)
-        except DataUnavailable as exc:
-            failures.append((ticker, str(exc)))
-            continue
-        rows.append(
-            ScreenRow(
-                ticker=ticker,
-                name=str(fundamentals.get("longName", "")),
-                sector=str(fundamentals.get("sector", "")),
-                price=_num(fundamentals.get("currentPrice")),
-                market_cap=_num(fundamentals.get("marketCap")),
-                factors=compute_factors(fundamentals, analyst_info),
-            )
+    def build_row(ticker: str) -> ScreenRow:
+        fundamentals = data_source.get_fundamentals(ticker)
+        analyst_info = data_source.get_analyst_info(ticker)
+        return ScreenRow(
+            ticker=ticker,
+            name=str(fundamentals.get("longName", "")),
+            sector=str(fundamentals.get("sector", "")),
+            price=_num(fundamentals.get("currentPrice")),
+            market_cap=_num(fundamentals.get("marketCap")),
+            factors=compute_factors(fundamentals, analyst_info),
         )
-        if delay:
-            time.sleep(delay)
-    return rows, failures
+
+    results, failures = fetch_many(
+        tickers,
+        build_row,
+        delay=delay,
+        progress=progress,
+        label="screening",
+        progress_every=25,
+    )
+    return list(results.values()), failures
 
 
 # ---------------------------------------------------------------- universe

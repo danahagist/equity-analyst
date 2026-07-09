@@ -229,9 +229,9 @@ def submit_verdict(packet: dict, *, analyst: str, payload: dict) -> Path:
         except (KeyError, ValueError, TypeError) as exc:
             raise ValueError(f"invalid verdict payload for {analyst}: {exc}") from exc
         entry = {"analyst": analyst, **payload}
-        session["verdicts"] = [
-            v for v in session["verdicts"] if v.get("analyst") != analyst
-        ] + [entry]
+        session["verdicts"] = [v for v in session["verdicts"] if v.get("analyst") != analyst] + [
+            entry
+        ]
     else:
         raise ValueError(f"unknown analyst {analyst!r}; expected one of {list(LLM_SEATS)} or 'PM'")
 
@@ -275,7 +275,7 @@ def consensus_briefing(packet: dict) -> str:
         "synthesis str; key_risks [str]; horizon_fit [str] — one line each for 1w/1m/1y):",
         json.dumps({k: v for k, v in PM_SCHEMA["properties"].items()}, indent=2),
         "",
-        f"Add it under the top-level key \"pm\" in {packet['verdicts_path']}, then run:",
+        f'Add it under the top-level key "pm" in {packet["verdicts_path"]}, then run:',
         f"  equity-analyst finalize {ticker}",
     ]
     return "\n".join(lines)
@@ -348,9 +348,7 @@ def _packet_markdown(packet: dict, technical: Verdict) -> str:
     """Human/Claude-readable packet: technical verdict + seat briefings."""
     ticker, as_of = packet["ticker"], packet["as_of"]
     price = (
-        f"Last price: ${packet['last_price']:,.2f}"
-        if packet.get("last_price") is not None
-        else ""
+        f"Last price: ${packet['last_price']:,.2f}" if packet.get("last_price") is not None else ""
     )
     out = [
         f"# Committee packet — {ticker} ({as_of})",

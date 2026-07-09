@@ -55,13 +55,11 @@ def resolve_forecasts(
     unresolvable = 0
     for row in conn.execute(query, params).fetchall():
         base = conn.execute(
-            "SELECT close FROM price_bar WHERE ticker = ? AND date <= ? "
-            "ORDER BY date DESC LIMIT 1",
+            "SELECT close FROM price_bar WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
             (row["ticker"], row["as_of"]),
         ).fetchone()
         realized = conn.execute(
-            "SELECT close FROM price_bar WHERE ticker = ? AND date >= ? "
-            "ORDER BY date ASC LIMIT 1",
+            "SELECT close FROM price_bar WHERE ticker = ? AND date >= ? ORDER BY date ASC LIMIT 1",
             (row["ticker"], row["target_date"]),
         ).fetchone()
         if base is None or base["close"] is None or realized is None or realized["close"] is None:
@@ -101,9 +99,7 @@ def _aggregate(rows: list[ResolvedForecast]) -> dict:
     }
 
 
-def build_skill_report(
-    resolved: list[ResolvedForecast], *, unresolvable: int, today: str
-) -> str:
+def build_skill_report(resolved: list[ResolvedForecast], *, unresolvable: int, today: str) -> str:
     """Render the audit as markdown."""
     out = [f"# Forecast skill report (as of {today})", ""]
     if not resolved:

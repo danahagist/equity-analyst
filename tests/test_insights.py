@@ -12,9 +12,17 @@ from equity_analyst.storage.export import export_tables
 
 
 def _seed_run(conn, ticker, as_of, pm_rating, conviction="medium", leaning="Buy", blended=0.5):
-    save_run(conn, ticker=ticker, as_of=as_of, created_at=f"{as_of}T00:00:00Z",
-             pm_rating=pm_rating, pm_conviction=conviction, consensus_leaning=leaning,
-             blended_score=blended, report_md="# report")
+    save_run(
+        conn,
+        ticker=ticker,
+        as_of=as_of,
+        created_at=f"{as_of}T00:00:00Z",
+        pm_rating=pm_rating,
+        pm_conviction=conviction,
+        consensus_leaning=leaning,
+        blended_score=blended,
+        report_md="# report",
+    )
 
 
 # --- compare -------------------------------------------------------------
@@ -48,26 +56,63 @@ def test_compare_empty_db_is_actionable() -> None:
 
 def _seed_skill_data(conn) -> None:
     # Price path: close = 100 at as_of, 110 at/after target.
-    upsert_prices(conn, "TEST", pd.DataFrame({
-        "date": pd.to_datetime(["2026-01-02", "2026-02-02", "2026-02-04"]),
-        "open": [100.0, 110.0, 111.0], "high": [100.0, 110.0, 111.0],
-        "low": [100.0, 110.0, 111.0], "close": [100.0, 110.0, 111.0],
-        "volume": [1e6] * 3,
-    }))
-    save_forecast_rows(conn, "TEST", "2026-01-02", [
-        # covered, point closer than naive → skillful
-        {"label": "1m", "target_date": "2026-02-02", "model": "LGB", "point": 108.0,
-         "lower": 95.0, "upper": 115.0, "interval_level": 80, "beats_baseline": True,
-         "n_windows": 16},
-        # missed interval, point worse than naive (realized 110 vs naive 100)
-        {"label": "1w", "target_date": "2026-02-03", "model": "RWD", "point": 80.0,
-         "lower": 75.0, "upper": 85.0, "interval_level": 80, "beats_baseline": False,
-         "n_windows": 16},
-        # not matured yet — excluded by `today`
-        {"label": "1y", "target_date": "2027-01-02", "model": "RWD", "point": 120.0,
-         "lower": 90.0, "upper": 150.0, "interval_level": 80, "beats_baseline": False,
-         "n_windows": 16},
-    ])
+    upsert_prices(
+        conn,
+        "TEST",
+        pd.DataFrame(
+            {
+                "date": pd.to_datetime(["2026-01-02", "2026-02-02", "2026-02-04"]),
+                "open": [100.0, 110.0, 111.0],
+                "high": [100.0, 110.0, 111.0],
+                "low": [100.0, 110.0, 111.0],
+                "close": [100.0, 110.0, 111.0],
+                "volume": [1e6] * 3,
+            }
+        ),
+    )
+    save_forecast_rows(
+        conn,
+        "TEST",
+        "2026-01-02",
+        [
+            # covered, point closer than naive → skillful
+            {
+                "label": "1m",
+                "target_date": "2026-02-02",
+                "model": "LGB",
+                "point": 108.0,
+                "lower": 95.0,
+                "upper": 115.0,
+                "interval_level": 80,
+                "beats_baseline": True,
+                "n_windows": 16,
+            },
+            # missed interval, point worse than naive (realized 110 vs naive 100)
+            {
+                "label": "1w",
+                "target_date": "2026-02-03",
+                "model": "RWD",
+                "point": 80.0,
+                "lower": 75.0,
+                "upper": 85.0,
+                "interval_level": 80,
+                "beats_baseline": False,
+                "n_windows": 16,
+            },
+            # not matured yet — excluded by `today`
+            {
+                "label": "1y",
+                "target_date": "2027-01-02",
+                "model": "RWD",
+                "point": 120.0,
+                "lower": 90.0,
+                "upper": 150.0,
+                "interval_level": 80,
+                "beats_baseline": False,
+                "n_windows": 16,
+            },
+        ],
+    )
 
 
 def test_skill_report_math_and_maturity() -> None:
@@ -89,11 +134,24 @@ def test_skill_report_math_and_maturity() -> None:
 
 def test_skill_report_unresolvable_and_empty() -> None:
     conn = connect(":memory:")
-    save_forecast_rows(conn, "NOPRICES", "2026-01-02", [
-        {"label": "1d", "target_date": "2026-01-05", "model": "RWD", "point": 1.0,
-         "lower": 0.5, "upper": 1.5, "interval_level": 80, "beats_baseline": False,
-         "n_windows": 4},
-    ])
+    save_forecast_rows(
+        conn,
+        "NOPRICES",
+        "2026-01-02",
+        [
+            {
+                "label": "1d",
+                "target_date": "2026-01-05",
+                "model": "RWD",
+                "point": 1.0,
+                "lower": 0.5,
+                "upper": 1.5,
+                "interval_level": 80,
+                "beats_baseline": False,
+                "n_windows": 4,
+            },
+        ],
+    )
     resolved, unresolvable = resolve_forecasts(conn, today="2026-07-08")
     assert resolved == [] and unresolvable == 1
     md = build_skill_report(resolved, unresolvable=unresolvable, today="2026-07-08")
@@ -117,7 +175,7 @@ def test_export_csv_round_trip(tmp_path) -> None:
 
     paths = export_tables(conn, tmp_path, fmt="csv")
     names = {p.name for p in paths}
-    assert names == {"runs.csv", "forecasts.csv", "prices.csv", "fundamentals.csv"}
+    assert names == {"runs.csv", "forecasts.csv", "prices.csv", "fundamentals.csv", "screens.csv"}
 
     runs = pd.read_csv(tmp_path / "runs.csv")
     assert list(runs["ticker"]) == ["AAA"]

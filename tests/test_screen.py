@@ -16,9 +16,15 @@ from equity_analyst.screen import (
 
 def _fundamentals(**overrides):
     base = {
-        "longName": "Test Co.", "sector": "Technology", "currentPrice": 100.0,
-        "marketCap": 5e10, "forwardPE": 20.0, "earningsGrowth": 0.20,
-        "totalRevenue": 1e10, "freeCashflow": 2e9, "operatingMargins": 0.25,
+        "longName": "Test Co.",
+        "sector": "Technology",
+        "currentPrice": 100.0,
+        "marketCap": 5e10,
+        "forwardPE": 20.0,
+        "earningsGrowth": 0.20,
+        "totalRevenue": 1e10,
+        "freeCashflow": 2e9,
+        "operatingMargins": 0.25,
         "revenueGrowth": 0.15,
     }
     base.update(overrides)
@@ -26,8 +32,7 @@ def _fundamentals(**overrides):
 
 
 def _analyst(**overrides):
-    base = {"recommendationMean": 2.0, "numberOfAnalystOpinions": 20,
-            "targetMeanPrice": 120.0}
+    base = {"recommendationMean": 2.0, "numberOfAnalystOpinions": 20, "targetMeanPrice": 120.0}
     base.update(overrides)
     return base
 
@@ -47,18 +52,19 @@ def test_compute_factors_thin_coverage_drops_street() -> None:
 
 
 def test_compute_factors_negative_growth_drops_peg() -> None:
-    factors = compute_factors(
-        _fundamentals(earningsGrowth=-0.10, revenueGrowth=-0.05), _analyst()
-    )
+    factors = compute_factors(_fundamentals(earningsGrowth=-0.10, revenueGrowth=-0.05), _analyst())
     assert "inverse_peg" not in factors
     assert factors["revenue_growth"] == pytest.approx(-0.05)
 
 
 def _row(ticker, upside, growth):
-    return ScreenRow(ticker=ticker, factors=compute_factors(
-        _fundamentals(earningsGrowth=growth),
-        _analyst(targetMeanPrice=100.0 * (1 + upside)),
-    ))
+    return ScreenRow(
+        ticker=ticker,
+        factors=compute_factors(
+            _fundamentals(earningsGrowth=growth),
+            _analyst(targetMeanPrice=100.0 * (1 + upside)),
+        ),
+    )
 
 
 def test_score_rows_ranks_cheap_high_upside_first() -> None:
@@ -103,9 +109,7 @@ def test_report_and_csv_output(tmp_path) -> None:
 _ROWS = [
     "|| [[3M]] || MMM || Industrials || Industrial Conglomerates",
     "|| [[Berkshire Hathaway]] || BRK.B || Financials || Multi-Sector Holdings",
-] + [
-    f"|| [[Company {i}]] || TK{i} || Industrials || Widgets" for i in range(510)
-]
+] + [f"|| [[Company {i}]] || TK{i} || Industrials || Widgets" for i in range(510)]
 _NL = chr(10)
 WIKITEXT_SAMPLE = _NL.join(
     [

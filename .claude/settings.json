@@ -3,7 +3,9 @@
     "defaultMode": "acceptEdits",
     "allow": [
       "Bash",
+      "Bash(*)",
       "PowerShell",
+      "PowerShell(*)",
       "Read",
       "Edit",
       "Write",
@@ -14,7 +16,9 @@
       "ToolSearch",
       "TodoWrite",
       "WebFetch",
+      "WebFetch(*)",
       "WebSearch",
+      "WebSearch(*)",
       "NotebookEdit"
     ],
     "ask": [
