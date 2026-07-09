@@ -190,6 +190,40 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - [x] `skill-report` (forecast-vs-actual audit; price bars persisted every run
   so realized prices backfill), `compare` (ranked latest-run screen), `export`
   (CSV / xlsx via the `excel` extra).
+- [x] First live runs (2026-07-08: AAPL, ALAB, NBIS, SNOW) + fixes they
+  surfaced: UTF-8 stdio guard for Windows consoles; deterministic fact-sheet
+  sanity caveats in seat briefings (one-off gains, buyback-shrunken equity,
+  hypergrowth bases, missing provider fields); `submit-verdict` command so
+  session verdicts are validated on write instead of hand-authored JSON;
+  multi-ticker `prep`/`consensus`/`finalize`/`analyze`.
+
+- [x] `screen` — deterministic, LLM-free pre-committee funnel over a large
+  universe (`--universe russell1000` via the Wikipedia components table, or
+  explicit tickers / `--tickers-file`). Blended 50/50 Street-gap (target
+  upside + consensus level, ≥5 analysts) and GARP (inverse PEG, FCF margin,
+  operating margin, revenue growth), scored as cross-sectional percentile
+  ranks. Output is *candidates for committee runs*, never a recommendation;
+  full ranking CSV lands in `outputs/`. Committee-scale usage stays bounded:
+  screen 1000 names cheaply, run the committee on the top ~20.
+
+- [x] Weekly pipeline (Dana's 4-phase funnel; [[weekly-pipeline]] skill is the
+  single entry point, each phase also standalone):
+  1. `screen` Russell 1000 → top 50 by blended score.
+  2. `prep` the committee set (forecasts).
+  3. committee on the top 10 (**selected by blended score, never by forecast
+     "upside"** — the engine has no skill vs drift at most horizons; forecast is
+     risk framing only).
+  4. `levels` — entry/exit buy/trim/target/stop from the forecast's 80%
+     intervals, **decision support only, never orders/auto-execution**.
+  5. `etf-exposure` — rank ETFs by exposure to the shortlist (broader-exposure
+     aid; sweeps a curated ETF universe, inverts top-holdings).
+  6. `notify` — email the package (stdlib SMTP; `SMTP_*` in `.env`).
+  Dana fires it himself (committee needs Claude Code as the LLM); it is not a
+  hands-off cron. Guardrail: research assistance, not advice — no auto-trading.
+  NOTE: the committee's web-search seats consume the Claude subscription
+  session limit — run them in waves (~6 at a time), not one blast, or a large
+  batch will hit the wall mid-run (happened 2026-07-08). Per-seat verdict files
+  make a hit-the-wall run resumable: just re-run the missing seats.
 
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output

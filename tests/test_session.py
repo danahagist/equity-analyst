@@ -134,3 +134,70 @@ def test_invalid_verdicts_fail_loudly(tmp_path) -> None:
 def test_load_packet_missing_gives_actionable_error(tmp_path) -> None:
     with pytest.raises(FileNotFoundError, match="equity-analyst prep"):
         load_packet(tmp_path / "runs", "NOPE")
+
+
+# ---------------------------------------------------------------- submit-verdict
+
+
+def _seat_payload(**overrides):
+    payload = {"rating": 1, "conviction": "medium", "horizon": "1y",
+               "evidence": "key points", "writeup": "full writeup"}
+    payload.update(overrides)
+    return payload
+
+
+def test_submit_verdict_seat_and_pm_roundtrip(tmp_path) -> None:
+    from equity_analyst.session import submit_verdict
+
+    result = _prep(tmp_path)
+    packet = load_packet(tmp_path / "runs", "TEST")
+
+    for seat in ("Fundamental", "News/Social", "Research"):
+        path = submit_verdict(packet, analyst=seat, payload=_seat_payload())
+    submit_verdict(packet, analyst="PM", payload={
+        "rating": 0, "conviction": "medium", "horizon": "1y",
+        "synthesis": "Balanced.", "key_risks": ["valuation"],
+        "horizon_fit": ["1w: no view", "1m: hold", "1y: hold"],
+    })
+
+    assert path == result.verdicts_path
+    run = finalize_run(packet)
+    assert "Portfolio Manager" in run.report_md
+    assert "excluded" not in run.report_md.lower() or "Excluded analysts" not in run.report_md
+
+
+def test_submit_verdict_overwrites_same_seat(tmp_path) -> None:
+    from equity_analyst.session import submit_verdict
+
+    _prep(tmp_path)
+    packet = load_packet(tmp_path / "runs", "TEST")
+    submit_verdict(packet, analyst="Research", payload=_seat_payload(rating=1))
+    submit_verdict(packet, analyst="Research", payload=_seat_payload(rating=-1))
+
+    doc = json.loads(result_path(packet).read_text(encoding="utf-8"))
+    entries = [v for v in doc["verdicts"] if v["analyst"] == "Research"]
+    assert len(entries) == 1 and entries[0]["rating"] == -1
+
+
+def result_path(packet):
+    from pathlib import Path
+
+    return Path(packet["verdicts_path"])
+
+
+def test_submit_verdict_rejects_bad_payloads(tmp_path) -> None:
+    from equity_analyst.session import submit_verdict
+
+    _prep(tmp_path)
+    packet = load_packet(tmp_path / "runs", "TEST")
+
+    with pytest.raises(ValueError, match="rating"):
+        submit_verdict(packet, analyst="Fundamental", payload=_seat_payload(rating=5))
+    with pytest.raises(ValueError, match="conviction"):
+        submit_verdict(packet, analyst="Fundamental", payload=_seat_payload(conviction="huge"))
+    with pytest.raises(ValueError, match="unknown analyst"):
+        submit_verdict(packet, analyst="Quant", payload=_seat_payload())
+    with pytest.raises(ValueError, match="PM"):
+        submit_verdict(packet, analyst="PM", payload={"rating": 1})
+    # nothing invalid was written
+    assert not result_path(packet).exists()

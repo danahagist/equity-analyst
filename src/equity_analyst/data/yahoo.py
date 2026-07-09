@@ -48,6 +48,28 @@ class YahooDataSource:
             raise DataUnavailable(f"could not fetch analyst info for {ticker!r}: {exc}") from exc
         return {key: info.get(key) for key in _ANALYST_KEYS if info.get(key) is not None}
 
+    def get_etf_holdings(self, etf: str) -> dict[str, float]:
+        """Return ``{symbol: weight_fraction}`` for an ETF's (top) holdings.
+
+        yfinance exposes only the top holdings, not the full basket — enough to
+        tell whether a stock is a *meaningful* position, which is what the
+        exposure screen cares about. Raises DataUnavailable if the ticker isn't
+        a fund or returns nothing.
+        """
+        try:
+            top = self._ticker(etf).funds_data.top_holdings
+        except Exception as exc:  # noqa: BLE001
+            raise DataUnavailable(f"could not fetch holdings for {etf!r}: {exc}") from exc
+        if top is None or top.empty:
+            raise DataUnavailable(f"no holdings returned for {etf!r} (not an ETF?)")
+        col = "Holding Percent" if "Holding Percent" in top.columns else top.columns[-1]
+        holdings: dict[str, float] = {}
+        for symbol, row in top.iterrows():
+            weight = row.get(col)
+            if weight is not None and weight == weight:  # NaN guard
+                holdings[str(symbol).upper()] = float(weight)
+        return holdings
+
 
 def normalize_prices(raw: pd.DataFrame) -> pd.DataFrame:
     """Coerce a ``yfinance`` history frame into the canonical tidy price frame."""

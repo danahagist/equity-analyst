@@ -189,6 +189,57 @@ def load_session_verdicts(
     return verdicts, pm, failures
 
 
+def submit_verdict(packet: dict, *, analyst: str, payload: dict) -> Path:
+    """Stages 2/4: validate one seat's verdict (or the PM synthesis) and merge
+    it into the session's verdicts file.
+
+    This replaces hand-editing the JSON file — the payload is validated with
+    the same rules ``finalize`` applies, so schema mistakes surface immediately
+    instead of at the end of the run. Re-submitting a seat overwrites its
+    previous entry.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError(f"verdict payload must be a JSON object, got {type(payload).__name__}")
+
+    path = Path(packet["verdicts_path"])
+    session: dict = {"verdicts": []}
+    if path.exists():
+        try:
+            session = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"existing verdicts file {path} is not valid JSON: {exc}") from exc
+        session.setdefault("verdicts", [])
+
+    if analyst == "PM":
+        try:
+            pm_from_parsed(payload)  # validation only; stored as raw JSON
+        except (KeyError, ValueError, TypeError) as exc:
+            raise ValueError(f"invalid PM synthesis payload: {exc}") from exc
+        session["pm"] = payload
+    elif analyst in LLM_SEATS:
+        try:
+            Verdict(  # validation only; stored as raw JSON
+                analyst=analyst,
+                rating=int(payload["rating"]),
+                conviction=str(payload["conviction"]),
+                horizon=str(payload["horizon"]),
+                evidence=str(payload["evidence"]),
+                writeup=str(payload.get("writeup", "")),
+            )
+        except (KeyError, ValueError, TypeError) as exc:
+            raise ValueError(f"invalid verdict payload for {analyst}: {exc}") from exc
+        entry = {"analyst": analyst, **payload}
+        session["verdicts"] = [
+            v for v in session["verdicts"] if v.get("analyst") != analyst
+        ] + [entry]
+    else:
+        raise ValueError(f"unknown analyst {analyst!r}; expected one of {list(LLM_SEATS)} or 'PM'")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(session, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 def consensus_briefing(packet: dict) -> str:
     """Stage 3: deterministic consensus + the PM briefing for the chat."""
     verdicts, _pm, failures = load_session_verdicts(packet)
