@@ -215,9 +215,15 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
      risk framing only).
   4. `levels` — entry/exit buy/trim/target/stop from the forecast's 80%
      intervals, **decision support only, never orders/auto-execution**.
-  5. `notify` — email the package (stdlib SMTP; `SMTP_*` in `.env`).
+  5. `etf-exposure` — rank ETFs by exposure to the shortlist (broader-exposure
+     aid; sweeps a curated ETF universe, inverts top-holdings).
+  6. `notify` — email the package (stdlib SMTP; `SMTP_*` in `.env`).
   Dana fires it himself (committee needs Claude Code as the LLM); it is not a
   hands-off cron. Guardrail: research assistance, not advice — no auto-trading.
+  NOTE: the committee's web-search seats consume the Claude subscription
+  session limit — run them in waves (~6 at a time), not one blast, or a large
+  batch will hit the wall mid-run (happened 2026-07-08). Per-seat verdict files
+  make a hit-the-wall run resumable: just re-run the missing seats.
 
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output

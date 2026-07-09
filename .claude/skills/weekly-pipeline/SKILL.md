@@ -59,7 +59,17 @@ equity-analyst levels T1 T2 ... T10
 Decision-support buy/trim/target/stop from the forecast's 80% intervals. Reads
 the packets from phase 2. Include this table in the final summary.
 
-## Phase 5 — email the package (optional)
+## Phase 5 — ETF exposure (broader-exposure aid)
+
+```bash
+equity-analyst etf-exposure T1 T2 ... T10
+```
+
+Ranks a curated ETF universe by how much of each fund sits in the candidate
+names (inverts top-holdings). Include the table in the email so Dana can take
+diversified exposure to a thesis instead of single names.
+
+## Phase 6 — email the package (optional)
 
 ```bash
 equity-analyst notify --subject "Weekly committee — <date>" \

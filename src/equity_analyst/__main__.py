@@ -25,6 +25,7 @@ _COMMANDS = (
     "submit-verdict",
     "screen",
     "levels",
+    "etf-exposure",
     "notify",
     "compare",
     "skill-report",
@@ -137,6 +138,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_levels.add_argument("--as-of", help="Session date (defaults to the latest packet)")
 
+    p_etf = sub.add_parser(
+        "etf-exposure",
+        help="Phase 6: rank ETFs by exposure to your candidate stocks (broader exposure)",
+    )
+    p_etf.add_argument(
+        "tickers", nargs="+", metavar="ticker", help="Candidate stock ticker(s)"
+    )
+    p_etf.add_argument(
+        "--etfs", help="Comma-separated ETF universe to sweep (default: curated list)"
+    )
+    p_etf.add_argument("--top", type=int, default=20, help="Rows to show (default: 20)")
+    p_etf.add_argument(
+        "--delay", type=float, default=0.3, help="Seconds between fetches (default: 0.3)"
+    )
+    p_etf.add_argument("--quiet", action="store_true", help="Suppress progress messages")
+
     p_notify = sub.add_parser(
         "notify", help="Email a report (stdlib SMTP; configure SMTP_* in .env)"
     )
@@ -176,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         "submit-verdict": _cmd_submit_verdict,
         "screen": _cmd_screen,
         "levels": _cmd_levels,
+        "etf-exposure": _cmd_etf_exposure,
         "notify": _cmd_notify,
         "compare": _cmd_compare,
         "skill-report": _cmd_skill_report,
@@ -442,6 +460,37 @@ def _cmd_levels(args: argparse.Namespace) -> int:
     if not plans:
         return 1
     print(build_levels_report(plans, as_of=date.today().isoformat()))
+    return 0
+
+
+def _cmd_etf_exposure(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from equity_analyst.data.yahoo import YahooDataSource
+    from equity_analyst.etf_exposure import (
+        DEFAULT_ETF_UNIVERSE,
+        build_exposure,
+        build_exposure_report,
+        fetch_holdings,
+    )
+
+    if args.etfs:
+        universe = [e.strip().upper() for e in args.etfs.split(",") if e.strip()]
+    else:
+        universe = list(dict.fromkeys(DEFAULT_ETF_UNIVERSE))
+    holdings, failures = fetch_holdings(
+        universe, data_source=YahooDataSource(), delay=args.delay, progress=_progress(args)
+    )
+    exposures = build_exposure(args.tickers, holdings)
+    print(
+        build_exposure_report(
+            exposures,
+            tickers=args.tickers,
+            top=args.top,
+            failures=failures,
+            as_of=date.today().isoformat(),
+        )
+    )
     return 0
 
 
