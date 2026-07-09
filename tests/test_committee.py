@@ -132,3 +132,56 @@ def test_fundamental_prompt_grounds_on_factsheet() -> None:
     FundamentalAnalyst(llm).evaluate(ctx)
     research = llm.calls[-2]  # phase-1 research call carries the fact-sheet
     assert "trailingPE: 28.5" in research["prompt"] and "$200.00" in research["prompt"]
+
+
+# ---------------------------------------------------------------- fact-sheet caveats
+
+
+def test_fundamentals_caveats_flags_one_off_gain_and_hypergrowth() -> None:
+    from equity_analyst.committee.base import fundamentals_caveats
+
+    caveats = "\n".join(fundamentals_caveats({
+        "sector": "Communication Services",
+        "profitMargins": 0.93,
+        "operatingMargins": -0.32,
+        "revenueGrowth": 6.8,
+    }))
+    assert "one-off non-operating gain" in caveats
+    assert "hypergrowth" in caveats
+    assert "provider did not return the company name" in caveats
+
+
+def test_fundamentals_caveats_flags_buyback_shrunken_equity() -> None:
+    from equity_analyst.committee.base import fundamentals_caveats
+
+    caveats = "\n".join(fundamentals_caveats({
+        "longName": "Apple Inc.",
+        "profitMargins": 0.27,
+        "operatingMargins": 0.32,
+        "returnOnEquity": 1.41,
+    }))
+    assert "ROE above 100%" in caveats
+
+
+def test_fundamentals_caveats_quiet_on_clean_data() -> None:
+    from equity_analyst.committee.base import fundamentals_caveats
+
+    assert fundamentals_caveats({
+        "longName": "Clean Co.",
+        "profitMargins": 0.10,
+        "operatingMargins": 0.12,
+        "returnOnEquity": 0.18,
+        "revenueGrowth": 0.08,
+        "trailingPE": 22.0,
+    }) == []
+
+
+def test_format_analyst_info_flags_missing_consensus_fields() -> None:
+    from equity_analyst.committee.base import AnalystContext, format_analyst_info
+
+    ctx = AnalystContext(ticker="SNOW", analyst_info={
+        "recommendationKey": "none",
+        "numberOfAnalystOpinions": 48,
+        "targetMeanPrice": 292.5,
+    })
+    assert "no consensus rating fields" in format_analyst_info(ctx)

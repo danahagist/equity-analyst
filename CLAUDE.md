@@ -190,6 +190,12 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
 - [x] `skill-report` (forecast-vs-actual audit; price bars persisted every run
   so realized prices backfill), `compare` (ranked latest-run screen), `export`
   (CSV / xlsx via the `excel` extra).
+- [x] First live runs (2026-07-08: AAPL, ALAB, NBIS, SNOW) + fixes they
+  surfaced: UTF-8 stdio guard for Windows consoles; deterministic fact-sheet
+  sanity caveats in seat briefings (one-off gains, buyback-shrunken equity,
+  hypergrowth bases, missing provider fields); `submit-verdict` command so
+  session verdicts are validated on write instead of hand-authored JSON;
+  multi-ticker `prep`/`consensus`/`finalize`/`analyze`.
 
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output

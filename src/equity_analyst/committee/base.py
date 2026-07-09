@@ -90,15 +90,89 @@ def format_fundamentals(context: AnalystContext) -> str:
     if context.fundamentals:
         lines.append("Fundamentals (from market data provider):")
         lines.extend(f"  - {key}: {value}" for key, value in context.fundamentals.items())
+        caveats = fundamentals_caveats(context.fundamentals)
+        if caveats:
+            lines.append("Data caveats (auto-flagged — read the figures critically):")
+            lines.extend(f"  ! {c}" for c in caveats)
     else:
         lines.append("Fundamentals: (none available)")
     return "\n".join(lines)
+
+
+def _as_float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def fundamentals_caveats(fundamentals: dict) -> list[str]:
+    """Deterministic sanity flags for provider fact-sheets.
+
+    Yahoo's summary fields mix trailing GAAP, one-off items, and stale
+    classifications without warning. These checks don't judge the stock —
+    they warn the analyst which figures need critical reading.
+    """
+    caveats: list[str] = []
+    net = _as_float(fundamentals.get("profitMargins"))
+    op = _as_float(fundamentals.get("operatingMargins"))
+    roe = _as_float(fundamentals.get("returnOnEquity"))
+    growth = _as_float(fundamentals.get("revenueGrowth"))
+
+    if net is not None and op is not None:
+        if op < 0 < net:
+            caveats.append(
+                "net margin is positive while operating margin is negative — almost "
+                "certainly a large one-off non-operating gain; discard trailing P/E "
+                "and ROE as valuation anchors and reason from operating economics."
+            )
+        elif net > op + 0.05:
+            caveats.append(
+                "net margin exceeds operating margin — non-operating income (interest, "
+                "one-offs) is flattering the bottom line; treat P/E and ROE with caution."
+            )
+
+    if roe is not None and roe > 1.0:
+        caveats.append(
+            "ROE above 100% signals a shrunken book-equity base (typically buybacks "
+            "or accumulated losses) — ROE, price/book, and debt/equity are not "
+            "meaningful signals here."
+        )
+
+    if growth is not None and growth > 3.0:
+        caveats.append(
+            f"revenue growth of {growth:.0%} is hypergrowth off a small or restated "
+            "base — verify durability rather than extrapolating."
+        )
+
+    if "sector" in fundamentals and "longName" not in fundamentals:
+        caveats.append(
+            "provider did not return the company name — other classification fields "
+            "(sector/industry) may be stale or wrong for this listing."
+        )
+
+    if "trailingPE" not in fundamentals and net is not None and net < 0:
+        caveats.append(
+            "no trailing P/E because trailing earnings are negative — expected for a "
+            "GAAP-unprofitable company, not a data error."
+        )
+
+    return caveats
 
 
 def format_analyst_info(context: AnalystContext) -> str:
     """Render third-party analyst/consensus data for a prompt."""
     if not context.analyst_info:
         return "Third-party analyst data: (none available)"
+    info = context.analyst_info
     lines = ["Third-party analyst data (from market data provider):"]
-    lines.extend(f"  - {key}: {value}" for key, value in context.analyst_info.items())
+    lines.extend(f"  - {key}: {value}" for key, value in info.items())
+    missing_rating = info.get("recommendationKey") in (None, "none", "") and not info.get(
+        "recommendationMean"
+    )
+    if missing_rating:
+        lines.append(
+            "Data caveat (auto-flagged): the provider returned no consensus rating "
+            "fields — rely on web-sourced rating tallies and say so in the writeup."
+        )
     return "\n".join(lines)

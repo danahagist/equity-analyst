@@ -17,10 +17,33 @@ import sys
 
 from equity_analyst import __version__
 
-_COMMANDS = ("analyze", "prep", "consensus", "finalize", "compare", "skill-report", "export")
+_COMMANDS = (
+    "analyze",
+    "prep",
+    "consensus",
+    "finalize",
+    "submit-verdict",
+    "compare",
+    "skill-report",
+    "export",
+)
+
+
+def _force_utf8_stdio() -> None:
+    """Windows consoles default to cp1252, which cannot encode the report's
+    Unicode (minus signs, arrows). Reconfigure stdout/stderr to UTF-8 so the
+    CLI works without PYTHONIOENCODING gymnastics."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8")
+            except (ValueError, OSError):  # e.g. detached/closed streams
+                pass
 
 
 def main(argv: list[str] | None = None) -> int:
+    _force_utf8_stdio()
     argv = list(sys.argv[1:] if argv is None else argv)
     # Backward compat: `equity-analyst AAPL` == `equity-analyst analyze AAPL`.
     if argv and argv[0] not in _COMMANDS and not argv[0].startswith("-"):
@@ -40,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         "prep", help="Stage 1 (keyless): fetch data, forecast, print seat briefings"
     )
     for p in (p_analyze, p_prep):
-        p.add_argument("ticker", help="Stock ticker, e.g. AAPL")
+        p.add_argument("tickers", nargs="+", metavar="ticker", help="Stock ticker(s), e.g. AAPL")
         p.add_argument("--period", default="5y", help="Price history to pull (default: 5y)")
         p.add_argument("--no-db", action="store_true", help="Do not persist to SQLite")
         p.add_argument("--quiet", action="store_true", help="Suppress progress messages")
@@ -55,12 +78,30 @@ def main(argv: list[str] | None = None) -> int:
         "finalize", help="Stage 5 (keyless): validate session, render + persist report"
     )
     for p in (p_consensus, p_finalize):
-        p.add_argument("ticker", help="Stock ticker of the prepared session")
+        p.add_argument(
+            "tickers", nargs="+", metavar="ticker", help="Ticker(s) of prepared session(s)"
+        )
         p.add_argument("--as-of", help="Session date (defaults to the latest packet)")
     p_finalize.add_argument(
         "--no-save", action="store_true", help="Do not write the markdown report to outputs/"
     )
     p_finalize.add_argument("--no-db", action="store_true", help="Do not persist to SQLite")
+
+    p_submit = sub.add_parser(
+        "submit-verdict",
+        help="Stages 2/4 (keyless): validate and record one seat's verdict JSON",
+    )
+    p_submit.add_argument("ticker", help="Ticker of the prepared session")
+    p_submit.add_argument(
+        "--analyst",
+        required=True,
+        choices=("Fundamental", "News/Social", "Research", "PM"),
+        help="Which seat this verdict belongs to (PM = portfolio-manager synthesis)",
+    )
+    p_submit.add_argument(
+        "--file", help="Path to the verdict JSON (default: read from stdin)"
+    )
+    p_submit.add_argument("--as-of", help="Session date (defaults to the latest packet)")
 
     p_compare = sub.add_parser(
         "compare", help="Rank the latest stored run per ticker side by side"
@@ -89,10 +130,25 @@ def main(argv: list[str] | None = None) -> int:
         "prep": _cmd_prep,
         "consensus": _cmd_consensus,
         "finalize": _cmd_finalize,
+        "submit-verdict": _cmd_submit_verdict,
         "compare": _cmd_compare,
         "skill-report": _cmd_skill_report,
         "export": _cmd_export,
     }[args.command](args)
+
+
+def _for_each_ticker(args: argparse.Namespace, run_one) -> int:
+    """Run a per-ticker command over every requested ticker.
+
+    One ticker failing does not stop the rest (mirrors the committee's
+    failure-isolation principle); the exit code is the worst one seen.
+    """
+    worst = 0
+    for i, ticker in enumerate(args.tickers):
+        if i:
+            print("\n" + "=" * 70 + "\n")
+        worst = max(worst, run_one(ticker))
+    return worst
 
 
 def _progress(args: argparse.Namespace):
@@ -119,33 +175,35 @@ def _cmd_analyze(args: argparse.Namespace) -> int:
         return 2
 
     settings.ensure_dirs()
-    conn = None if args.no_db else connect(settings.db_path)
     output_dir = None if args.no_save else settings.outputs_dir
 
-    try:
-        result = run_committee(
-            args.ticker,
-            data_source=YahooDataSource(),
-            llm=AnthropicClient(api_key=settings.anthropic_api_key),
-            period=args.period,
-            output_dir=output_dir,
-            conn=conn,
-            progress=_progress(args),
-        )
-    except DataUnavailable as exc:
-        print(f"error: market data unavailable — {exc}")
-        return 1
-    except LLMError as exc:
-        print(f"error: LLM call failed — {exc}")
-        return 1
-    finally:
-        if conn is not None:
-            conn.close()
+    def run_one(ticker: str) -> int:
+        conn = None if args.no_db else connect(settings.db_path)
+        try:
+            result = run_committee(
+                ticker,
+                data_source=YahooDataSource(),
+                llm=AnthropicClient(api_key=settings.anthropic_api_key),
+                period=args.period,
+                output_dir=output_dir,
+                conn=conn,
+                progress=_progress(args),
+            )
+        except DataUnavailable as exc:
+            print(f"error: market data unavailable for {ticker} — {exc}")
+            return 1
+        except LLMError as exc:
+            print(f"error: LLM call failed for {ticker} — {exc}")
+            return 1
+        finally:
+            if conn is not None:
+                conn.close()
+        print(result.report_md)
+        if result.output_path is not None:
+            print(f"\n[saved to {result.output_path}]")
+        return 0
 
-    print(result.report_md)
-    if result.output_path is not None:
-        print(f"\n[saved to {result.output_path}]")
-    return 0
+    return _for_each_ticker(args, run_one)
 
 
 def _cmd_prep(args: argparse.Namespace) -> int:
@@ -156,26 +214,29 @@ def _cmd_prep(args: argparse.Namespace) -> int:
 
     settings = get_settings()
     settings.ensure_dirs()
-    conn = None if args.no_db else connect(settings.db_path)
-    try:
-        result = prep_packet(
-            args.ticker,
-            data_source=YahooDataSource(),
-            runs_dir=settings.runs_dir,
-            period=args.period,
-            conn=conn,
-            progress=_progress(args),
-        )
-    except DataUnavailable as exc:
-        print(f"error: market data unavailable — {exc}")
-        return 1
-    finally:
-        if conn is not None:
-            conn.close()
 
-    print(result.markdown)
-    print(f"\n[packet saved to {result.packet_path}]")
-    return 0
+    def run_one(ticker: str) -> int:
+        conn = None if args.no_db else connect(settings.db_path)
+        try:
+            result = prep_packet(
+                ticker,
+                data_source=YahooDataSource(),
+                runs_dir=settings.runs_dir,
+                period=args.period,
+                conn=conn,
+                progress=_progress(args),
+            )
+        except DataUnavailable as exc:
+            print(f"error: market data unavailable for {ticker} — {exc}")
+            return 1
+        finally:
+            if conn is not None:
+                conn.close()
+        print(result.markdown)
+        print(f"\n[packet saved to {result.packet_path}]")
+        return 0
+
+    return _for_each_ticker(args, run_one)
 
 
 def _cmd_consensus(args: argparse.Namespace) -> int:
@@ -183,13 +244,17 @@ def _cmd_consensus(args: argparse.Namespace) -> int:
     from equity_analyst.session import consensus_briefing, load_packet
 
     settings = get_settings()
-    try:
-        packet = load_packet(settings.runs_dir, args.ticker, args.as_of)
-        print(consensus_briefing(packet))
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"error: {exc}")
-        return 1
-    return 0
+
+    def run_one(ticker: str) -> int:
+        try:
+            packet = load_packet(settings.runs_dir, ticker, args.as_of)
+            print(consensus_briefing(packet))
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}")
+            return 1
+        return 0
+
+    return _for_each_ticker(args, run_one)
 
 
 def _cmd_finalize(args: argparse.Namespace) -> int:
@@ -199,24 +264,61 @@ def _cmd_finalize(args: argparse.Namespace) -> int:
 
     settings = get_settings()
     settings.ensure_dirs()
-    conn = None if args.no_db else connect(settings.db_path)
+
+    def run_one(ticker: str) -> int:
+        conn = None if args.no_db else connect(settings.db_path)
+        try:
+            packet = load_packet(settings.runs_dir, ticker, args.as_of)
+            result = finalize_run(
+                packet,
+                output_dir=None if args.no_save else settings.outputs_dir,
+                conn=conn,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"error: {exc}")
+            return 1
+        finally:
+            if conn is not None:
+                conn.close()
+        print(result.report_md)
+        if result.output_path is not None:
+            print(f"\n[saved to {result.output_path}]")
+        return 0
+
+    return _for_each_ticker(args, run_one)
+
+
+def _cmd_submit_verdict(args: argparse.Namespace) -> int:
+    import json
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.session import load_packet, submit_verdict
+
+    if args.file:
+        from pathlib import Path
+
+        try:
+            raw = Path(args.file).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot read {args.file} — {exc}")
+            return 1
+    else:
+        raw = sys.stdin.read()
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"error: verdict payload is not valid JSON — {exc}")
+        return 1
+
+    settings = get_settings()
     try:
         packet = load_packet(settings.runs_dir, args.ticker, args.as_of)
-        result = finalize_run(
-            packet,
-            output_dir=None if args.no_save else settings.outputs_dir,
-            conn=conn,
-        )
+        path = submit_verdict(packet, analyst=args.analyst, payload=payload)
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}")
         return 1
-    finally:
-        if conn is not None:
-            conn.close()
-
-    print(result.report_md)
-    if result.output_path is not None:
-        print(f"\n[saved to {result.output_path}]")
+    print(f"recorded {args.analyst} verdict for {args.ticker.upper()} in {path}")
     return 0
 
 

@@ -1,6 +1,6 @@
 ---
 name: run-analysis
-description: Run the equity-analyst investment committee for a ticker. Default mode needs NO API key — Claude Code itself performs the LLM analyst seats via the staged prep/consensus/finalize CLI. Use when asked to run, analyze, or demo the tool on a stock.
+description: Run the equity-analyst investment committee for one or more tickers. Default mode needs NO API key — Claude Code itself performs the LLM analyst seats via the staged prep/consensus/finalize CLI. Use when asked to run, analyze, screen, or demo the tool on stocks.
 ---
 
 # Run a committee analysis (Claude-Code-native, no API key)
@@ -22,6 +22,7 @@ committee is **independent** verdicts, so respect the independence rules.
 
 ```bash
 equity-analyst prep TICKER          # ~1-2 min; add --period 10y for more history
+equity-analyst prep T1 T2 T3        # multi-ticker screen: preps run back to back
 ```
 
 Prints a packet: the Technical analyst's verdict (already recorded) plus a
@@ -49,10 +50,23 @@ discipline: complete each seat's analysis fully before reading the next
 briefing, never reference another seat's conclusions inside a writeup, and
 note in the final summary that seats shared one context window.
 
-Collect the three JSON verdicts and write the verdicts file exactly as the
-packet specifies: `{"verdicts": [ ...three objects with "analyst" added... ]}`.
-If a seat fails (e.g. web search unavailable), omit it — finalize will
-disclose the gap honestly. Never fabricate a verdict.
+Record each seat's JSON verdict with `submit-verdict` (validates the schema
+immediately instead of letting mistakes surface at finalize). Write each
+verdict to a temp file, then:
+
+```bash
+equity-analyst submit-verdict TICKER --analyst Fundamental --file verdict.json
+equity-analyst submit-verdict TICKER --analyst "News/Social" --file ...
+equity-analyst submit-verdict TICKER --analyst Research --file ...
+```
+
+Do NOT hand-author the combined verdicts file — that path is error-prone with
+long escaped writeups. If a seat fails (e.g. web search unavailable), omit
+it — finalize will disclose the gap honestly. Never fabricate a verdict.
+
+For multi-ticker screens: prep all tickers first, then spawn ALL seats for
+ALL tickers in one parallel batch (independence rules apply per seat, not per
+ticker), then consensus/PM/finalize per ticker.
 
 ## Stage 3 — consensus + PM
 
@@ -64,9 +78,12 @@ Prints the deterministic agreement summary and the Portfolio Manager
 briefing. Now perform the PM role yourself in the main conversation (this
 seat is *supposed* to see everything). Follow the briefing's mandate —
 especially: do not manufacture short-term views the Technical skill flags
-don't support, and justify any override of the mechanical blend. Add your
-synthesis under the `"pm"` key of the verdicts file in the exact schema the
-briefing shows.
+don't support, and justify any override of the mechanical blend. Record the
+synthesis (exact schema shown in the briefing) via:
+
+```bash
+equity-analyst submit-verdict TICKER --analyst PM --file pm.json
+```
 
 ## Stage 4 — finalize
 
