@@ -28,6 +28,7 @@ _COMMANDS = (
     "qualify",
     "levels",
     "etf-exposure",
+    "etf-strategy",
     "digest",
     "notify",
     "compare",
@@ -182,6 +183,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_etf.add_argument("--quiet", action="store_true", help="Suppress progress messages")
 
+    p_strategy = sub.add_parser(
+        "etf-strategy",
+        help="Coverage-optimized ETF basket over the screen's top names, with risk/return stats",
+    )
+    p_strategy.add_argument(
+        "tickers", nargs="*", metavar="ticker", help="Candidates (or use --screen-csv)"
+    )
+    p_strategy.add_argument("--screen-csv", help="Take the top rows of a `screen` CSV")
+    p_strategy.add_argument(
+        "--top", type=int, default=50, help="Rows to take from the CSV (default: 50)"
+    )
+    p_strategy.add_argument(
+        "--max-etfs", type=int, default=5, help="Maximum funds in the basket (default: 5)"
+    )
+    p_strategy.add_argument(
+        "--etfs", help="Comma-separated ETF universe to sweep (default: curated list)"
+    )
+    p_strategy.add_argument(
+        "--period", default="5y", help="Price history for the statistics (default: 5y)"
+    )
+    p_strategy.add_argument(
+        "--no-save", action="store_true", help="Do not write the report to outputs/"
+    )
+    p_strategy.add_argument(
+        "--delay", type=float, default=0.3, help="Seconds between fetches (default: 0.3)"
+    )
+    p_strategy.add_argument("--quiet", action="store_true", help="Suppress progress messages")
+
     p_digest = sub.add_parser(
         "digest",
         help="Combined decision digest: all analysts + consensus + levels + ETFs + exec summary",
@@ -195,6 +224,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_digest.add_argument(
         "--no-etf", action="store_true", help="Skip the ETF-exposure section (no fetches)"
+    )
+    p_digest.add_argument(
+        "--etf-strategy-file",
+        help="Embed a saved `etf-strategy` report as the ETF section (skips the sweep)",
     )
     p_digest.add_argument(
         "--no-save", action="store_true", help="Do not write the digest to outputs/"
@@ -246,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
         "qualify": _cmd_qualify,
         "levels": _cmd_levels,
         "etf-exposure": _cmd_etf_exposure,
+        "etf-strategy": _cmd_etf_strategy,
         "digest": _cmd_digest,
         "notify": _cmd_notify,
         "compare": _cmd_compare,
@@ -550,6 +584,74 @@ def _cmd_qualify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_etf_strategy(args: argparse.Namespace) -> int:
+    from datetime import date
+    from pathlib import Path
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.data.yahoo import YahooDataSource
+    from equity_analyst.etf_exposure import DEFAULT_ETF_UNIVERSE, fetch_holdings
+    from equity_analyst.etf_strategy import (
+        basket_correlations,
+        build_basket,
+        build_strategy_report,
+        fetch_stats,
+    )
+    from equity_analyst.rank import read_screen_csv
+
+    candidates: list[tuple[str, float | None]] = [(t.upper(), None) for t in args.tickers]
+    if args.screen_csv:
+        try:
+            csv_rows = read_screen_csv(Path(args.screen_csv), top=args.top)
+        except (OSError, KeyError) as exc:
+            print(f"error: cannot read screen CSV {args.screen_csv} — {exc}")
+            return 1
+        known = {t for t, _ in candidates}
+        candidates += [(t, b) for t, b in csv_rows if t not in known]
+    if not candidates:
+        print("error: no candidates — pass tickers and/or --screen-csv")
+        return 2
+
+    if args.etfs:
+        universe = [e.strip().upper() for e in args.etfs.split(",") if e.strip()]
+    else:
+        universe = list(dict.fromkeys(DEFAULT_ETF_UNIVERSE))
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    data_source = YahooDataSource()
+    holdings, _failures = fetch_holdings(
+        universe, data_source=data_source, delay=args.delay, progress=_progress(args)
+    )
+    picks, uncovered = build_basket(candidates, holdings, max_etfs=args.max_etfs)
+    if not picks:
+        print("error: no swept fund holds any of the screened names in its top holdings")
+        return 1
+    stats = fetch_stats(
+        [p.etf for p in picks],
+        data_source=data_source,
+        period=args.period,
+        delay=args.delay,
+        progress=_progress(args),
+    )
+    as_of = date.today().isoformat()
+    report = build_strategy_report(
+        picks,
+        stats,
+        candidates=candidates,
+        uncovered=uncovered,
+        correlations=basket_correlations(stats),
+        swept=len(holdings),
+        as_of=as_of,
+    )
+    print(report)
+    if not args.no_save:
+        out_path = settings.outputs_dir / f"etf-strategy-{as_of}.md"
+        out_path.write_text(report, encoding="utf-8")
+        print(f"\n[saved to {out_path}]")
+    return 0
+
+
 def _cmd_digest(args: argparse.Namespace) -> int:
     from datetime import date
     from pathlib import Path
@@ -582,7 +684,13 @@ def _cmd_digest(args: argparse.Namespace) -> int:
             return 1
 
     etf_section = None
-    if not args.no_etf:
+    if args.etf_strategy_file:
+        try:
+            etf_section = Path(args.etf_strategy_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"error: cannot read {args.etf_strategy_file} — {exc}")
+            return 1
+    elif not args.no_etf:
         from equity_analyst.data.yahoo import YahooDataSource
         from equity_analyst.etf_exposure import (
             DEFAULT_ETF_UNIVERSE,

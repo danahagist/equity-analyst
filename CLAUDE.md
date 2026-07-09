@@ -229,9 +229,17 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
      not discarded.
   5. `digest` — the combined decision document for the five: every analyst's
      bottom line, consensus + dissents, PM synthesis/risks/holding-period fit,
-     levels row, ETF-exposure section, and an executive summary **authored by
-     the committee LLM** (passed via `--exec-summary-file`; the renderer never
-     fabricates it). `levels`/`etf-exposure`/`compare` remain standalone.
+     levels row, ETF section, and an executive summary **authored by the
+     committee LLM** (passed via `--exec-summary-file`; the renderer never
+     fabricates it). `etf-strategy` builds the richer ETF section: a
+     coverage-optimized basket over the whole top 50 (greedy overlap-aware
+     set-cover; alternative to single-name exposure per Dana 2026-07-08) with
+     historical risk/return stats, pairwise correlations, and uncovered names
+     disclosed — embedded via `--etf-strategy-file`. Its caveats are part of
+     the design: top-holdings-only data understates coverage; an ETF is a
+     whole-fund bet; the strategy dilutes the stock-level signal deliberately;
+     stats are history, not forecasts. `levels`/`etf-exposure`/`compare`
+     remain standalone.
   6. `notify` — email the digest (stdlib SMTP; `SMTP_*` in `.env`).
   Dana fires it himself (committee needs Claude Code as the LLM); it is not a
   hands-off cron. Guardrail: research assistance, not advice — no auto-trading.

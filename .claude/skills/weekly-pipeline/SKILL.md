@@ -78,13 +78,22 @@ equity-analyst digest Q1 Q2 Q3 Q4 Q5      # the 5 qualifiers
 
 One document with, per name: every analyst's bottom line, the consensus and
 dissents, the PM's full synthesis + risks + holding-period fit, the levels row,
-and a qualification mark — plus an ETF-exposure section. Then **write the
-executive summary yourself** (you have read every report): the strongest cases
-and why, shared macro exposures, where the committee disagreed, what would
-change the calls. Save it to a file and re-render:
+and a qualification mark — plus an ETF section. For the richer ETF section,
+first build the **coverage-optimized fund basket over the whole top 50** (an
+alternative to single-name exposure: greedy overlap-aware set-cover plus
+historical risk/return stats and pairwise correlations):
 
 ```bash
-equity-analyst digest Q1 ... Q5 --exec-summary-file <path>
+equity-analyst etf-strategy --screen-csv outputs/screen-<date>.csv --top 50
+```
+
+Then **write the executive summary yourself** (you have read every report):
+the strongest cases and why, shared macro exposures, where the committee
+disagreed, what would change the calls. Save it to a file and render:
+
+```bash
+equity-analyst digest Q1 ... Q5 --exec-summary-file <path> \
+  --etf-strategy-file outputs/etf-strategy-<date>.md
 ```
 
 The digest saves to `outputs/digest-<date>.md`. Never fabricate the executive
