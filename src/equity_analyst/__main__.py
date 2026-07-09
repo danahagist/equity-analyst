@@ -23,6 +23,7 @@ _COMMANDS = (
     "consensus",
     "finalize",
     "submit-verdict",
+    "screen",
     "compare",
     "skill-report",
     "export",
@@ -103,6 +104,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_submit.add_argument("--as-of", help="Session date (defaults to the latest packet)")
 
+    p_screen = sub.add_parser(
+        "screen",
+        help="Deterministic pre-committee screen (blended Street-gap + GARP), no LLM",
+    )
+    p_screen.add_argument(
+        "tickers", nargs="*", metavar="ticker", help="Universe to screen (or use --universe)"
+    )
+    p_screen.add_argument(
+        "--universe",
+        choices=("russell1000",),
+        help="Fetch a named universe (Russell 1000 via iShares IWB holdings)",
+    )
+    p_screen.add_argument("--tickers-file", help="File with one ticker per line")
+    p_screen.add_argument("--top", type=int, default=25, help="Rows to show (default: 25)")
+    p_screen.add_argument(
+        "--limit", type=int, help="Screen only the first N tickers (for testing)"
+    )
+    p_screen.add_argument(
+        "--delay", type=float, default=0.3, help="Seconds between fetches (default: 0.3)"
+    )
+    p_screen.add_argument("--quiet", action="store_true", help="Suppress progress messages")
+
     p_compare = sub.add_parser(
         "compare", help="Rank the latest stored run per ticker side by side"
     )
@@ -131,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         "consensus": _cmd_consensus,
         "finalize": _cmd_finalize,
         "submit-verdict": _cmd_submit_verdict,
+        "screen": _cmd_screen,
         "compare": _cmd_compare,
         "skill-report": _cmd_skill_report,
         "export": _cmd_export,
@@ -319,6 +343,62 @@ def _cmd_submit_verdict(args: argparse.Namespace) -> int:
         print(f"error: {exc}")
         return 1
     print(f"recorded {args.analyst} verdict for {args.ticker.upper()} in {path}")
+    return 0
+
+
+def _cmd_screen(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from equity_analyst.config import get_settings
+    from equity_analyst.data.yahoo import YahooDataSource
+    from equity_analyst.screen import (
+        build_screen_report,
+        fetch_russell1000,
+        run_screen,
+        score_rows,
+        write_screen_csv,
+    )
+
+    tickers = [t.upper() for t in args.tickers]
+    if args.tickers_file:
+        from pathlib import Path
+
+        tickers += [
+            line.strip().upper()
+            for line in Path(args.tickers_file).read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        ]
+    if args.universe == "russell1000":
+        try:
+            tickers += fetch_russell1000()
+        except (OSError, ValueError) as exc:
+            print(f"error: could not fetch Russell 1000 constituents — {exc}")
+            return 1
+    tickers = list(dict.fromkeys(tickers))  # dedupe, preserve order
+    if not tickers:
+        print("error: no tickers — pass tickers, --tickers-file, or --universe russell1000")
+        return 2
+    if args.limit:
+        tickers = tickers[: args.limit]
+
+    settings = get_settings()
+    settings.ensure_dirs()
+    rows, failures = run_screen(
+        tickers,
+        data_source=YahooDataSource(),
+        delay=args.delay,
+        progress=_progress(args),
+    )
+    ranked, excluded = score_rows(rows)
+    as_of = date.today().isoformat()
+    print(
+        build_screen_report(
+            ranked, top=args.top, excluded=excluded, failures=failures, as_of=as_of
+        )
+    )
+    if ranked:
+        csv_path = write_screen_csv(ranked, settings.outputs_dir / f"screen-{as_of}.csv")
+        print(f"\n[full ranking saved to {csv_path}]")
     return 0
 
 

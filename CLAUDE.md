@@ -197,6 +197,15 @@ probabilistic-forecasting + backtesting-native design and strong baseline cultur
   session verdicts are validated on write instead of hand-authored JSON;
   multi-ticker `prep`/`consensus`/`finalize`/`analyze`.
 
+- [x] `screen` — deterministic, LLM-free pre-committee funnel over a large
+  universe (`--universe russell1000` via the Wikipedia components table, or
+  explicit tickers / `--tickers-file`). Blended 50/50 Street-gap (target
+  upside + consensus level, ≥5 analysts) and GARP (inverse PEG, FCF margin,
+  operating margin, revenue growth), scored as cross-sectional percentile
+  ranks. Output is *candidates for committee runs*, never a recommendation;
+  full ranking CSV lands in `outputs/`. Committee-scale usage stays bounded:
+  screen 1000 names cheaply, run the committee on the top ~20.
+
 **Next steps (in rough order of value):**
 - First live run on Dana's machine — prompt tuning against real Claude output
   is the remaining unknown; synthetic fixtures can't validate prompt quality.
