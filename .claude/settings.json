@@ -3,7 +3,9 @@
     "defaultMode": "acceptEdits",
     "allow": [
       "Bash",
+      "Bash(*)",
       "PowerShell",
+      "PowerShell(*)",
       "Read",
       "Edit",
       "Write",
